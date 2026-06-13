@@ -1,0 +1,6 @@
+[submodule "references/experiments"]
+	path = references/experiments
+	url = http://thinq.tailff046f.ts.net:1299/axion/iexp1.git
+[submodule "references/pure-solver"]
+	path = references/pure-solver
+	url = https://github.com/axionbuster/gemssearch002.git
