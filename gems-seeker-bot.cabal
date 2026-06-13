@@ -1,0 +1,87 @@
+cabal-version:      3.4
+name:               gems-seeker-bot
+version:            0.1.0.0
+synopsis:           Automated macOS solver for the Gem Seeker minigame.
+license:            BSD-3-Clause
+author:             axionbuster
+maintainer:         axionbuster@gmail.com
+build-type:         Simple
+tested-with:        GHC == 9.14.1
+extra-doc-files:    CLAUDE.md
+
+-- Shared settings. StrictData (NOT Strict — see CLAUDE.md) gives strict fields;
+-- add {-# UNPACK #-} on simple fields to keep numbers out of boxes.
+common shared
+    default-language:   GHC2024
+    default-extensions: StrictData
+    ghc-options:        -Wall
+
+-- Optimisation only matters in the perf-critical halves: board search & vision.
+common perf
+    ghc-options:        -O2
+
+-- The algorithm: board state, physics, and search (ported from
+-- references/pure-solver, re-styled with 2-space indent + TDD).
+library gsb-search
+    import:           shared, perf
+    hs-source-dirs:   src/search
+    exposed-modules:  Board
+                    , Search.Dijkstra
+                    , Solve
+    build-depends:    base ^>=4.22.0.0
+                    , array
+                    , containers
+                    , hashable
+                    , psqueues
+                    , unordered-containers
+
+-- The eyes: image ops + board parsing from a handful of captured frames
+-- (ported from references/experiments src/image + app/Experiment2).
+library gsb-vision
+    import:           shared, perf
+    hs-source-dirs:   src/vision
+    exposed-modules:  Image
+                    , Image.Zncc
+                    , Image.Frame
+                    , Vision.Board
+    build-depends:    base ^>=4.22.0.0
+                    , JuicyPixels ^>=3.3.9
+                    , bytestring
+                    , vector
+                    , gems-seeker-bot:gsb-search
+
+-- The hands: macOS window geometry, frame grab, and swipe gestures
+-- (ported from references/experiments src/mac). Darwin only.
+library gsb-mac
+    import:           shared
+    hs-source-dirs:   src/mac
+    exposed-modules:  Mac.Mirror
+                    , Mac.Gesture
+    if !os(osx)
+        buildable: False
+    build-depends:    base ^>=4.22.0.0
+                    , bytestring
+                    , process
+                    , unliftio
+                    , gems-seeker-bot:gsb-search
+
+-- The bot: parse a board, solve it, replay the swipes. Darwin only.
+executable gems-seeker-bot
+    import:           shared
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    if !os(osx)
+        buildable: False
+    build-depends:    base ^>=4.22.0.0
+                    , gems-seeker-bot:gsb-search
+                    , gems-seeker-bot:gsb-vision
+                    , gems-seeker-bot:gsb-mac
+
+test-suite gsb-test
+    import:           shared
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:    base ^>=4.22.0.0
+                    , hspec
+                    , gems-seeker-bot:gsb-search
