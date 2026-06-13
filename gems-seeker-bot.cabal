@@ -33,6 +33,7 @@ library gsb-search
                     , containers >= 0.8 && < 0.9
                     , hashable >= 1.5.1 && < 1.6
                     , psqueues >= 0.2.8 && < 0.3
+                    , transformers >= 0.6 && < 0.7
                     , unordered-containers >= 0.2.21 && < 0.3
 
 -- The eyes: image ops + board parsing from a handful of captured frames
