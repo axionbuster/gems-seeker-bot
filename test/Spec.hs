@@ -16,6 +16,28 @@ import Board
   )
 import Solve (parseCase, solve)
 
+import Image (Image, PixelRGB8 (..), generateImage, pixelAt)
+import Image.Zncc (bestZncc, zncc)
+
+-- A non-flat RGB gradient image (non-zero variance, so ZNCC is well-defined).
+gradient :: Int -> Int -> Image PixelRGB8
+gradient w h = generateImage px w h
+  where
+    px x y =
+      PixelRGB8
+        (fromIntegral ((x * 37 + y * 17) `mod` 256))
+        (fromIntegral ((x * 11 + y * 53) `mod` 256))
+        (fromIntegral ((x * 101 + y * 7) `mod` 256))
+
+near :: Double -> Double -> Bool
+near a b = abs (a - b) < 1e-9
+
+pixelAtG :: Image PixelRGB8 -> Int -> Int -> PixelRGB8
+pixelAtG = pixelAt
+
+invert :: PixelRGB8 -> PixelRGB8
+invert (PixelRGB8 r g b) = PixelRGB8 (255 - r) (255 - g) (255 - b)
+
 -- | Board after a (possibly terminal) move outcome.
 boardOf :: Either (Exc Board) Board -> Board
 boardOf (Right b) = b
@@ -130,6 +152,38 @@ main = hspec $ do
       -- a gem is present so the move is actually simulated (not short-circuited)
       applyGravity R (Board 3 2 [Gem, Air, Air, Bat, Air, Player])
         `shouldBe` Left Lost
+
+  describe "Image.Zncc.zncc" $ do
+    it "scores a perfect 1 for an identical window" $
+      zncc (gradient 6 6) (gradient 6 6) (0, 0) `shouldSatisfy` near 1
+
+    it "scores -1 for a perfectly inverted window" $ do
+      let t = gradient 6 6
+          s = generateImage (\x y -> invert (pixelAtG t x y)) 6 6
+      zncc t s (0, 0) `shouldSatisfy` near (-1)
+
+    it "scores 0 for a flat (zero-variance) template" $
+      zncc (generateImage (\_ _ -> PixelRGB8 7 7 7) 6 6) (gradient 6 6) (0, 0)
+        `shouldBe` 0
+
+    it "scores 0 when the template does not fit at the offset" $ do
+      let t = gradient 6 6
+          s = gradient 6 6
+      zncc t s (1, 0) `shouldBe` 0 -- 6-wide template can't sit at x=1 in a 6-wide source
+    it "scores 0 for a negative offset" $
+      zncc (gradient 4 4) (gradient 8 8) (-1, 0) `shouldBe` 0
+
+    it "finds the embedded template via bestZncc within the search radius" $ do
+      let t = gradient 4 4
+          -- source: t embedded at (2,3), constant gray elsewhere
+          s = generateImage embed 9 9
+          embed x y =
+            let lx = x - 2
+                ly = y - 3
+             in if lx >= 0 && lx < 4 && ly >= 0 && ly < 4
+                  then pixelAtG t lx ly
+                  else PixelRGB8 128 128 128
+      bestZncc t s 3 (2, 3) `shouldSatisfy` near 1
 
   caseSpec "case0 (no bats, 6x8)"
     "references/pure-solver/case0.txt"

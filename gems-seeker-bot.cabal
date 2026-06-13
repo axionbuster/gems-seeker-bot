@@ -86,3 +86,4 @@ test-suite gsb-test
     build-depends:    base ^>= 4.22.0.0
                     , hspec >= 2.11.17 && < 2.12
                     , gems-seeker-bot:gsb-search
+                    , gems-seeker-bot:gsb-vision

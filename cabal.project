@@ -1,0 +1,4 @@
+-- Only this package. The reference submodules under references/ carry their own
+-- .cabal/stack setups and must NOT be part of our build (we read from them, we
+-- don't depend on them — see CLAUDE.md).
+packages: .
