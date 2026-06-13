@@ -28,12 +28,12 @@ library gsb-search
     exposed-modules:  Board
                     , Search.Dijkstra
                     , Solve
-    build-depends:    base ^>=4.22.0.0
-                    , array
-                    , containers
-                    , hashable
-                    , psqueues
-                    , unordered-containers
+    build-depends:    base ^>= 4.22.0.0
+                    , array >= 0.5.8 && < 0.6
+                    , containers >= 0.8 && < 0.9
+                    , hashable >= 1.5.1 && < 1.6
+                    , psqueues >= 0.2.8 && < 0.3
+                    , unordered-containers >= 0.2.21 && < 0.3
 
 -- The eyes: image ops + board parsing from a handful of captured frames
 -- (ported from references/experiments src/image + app/Experiment2).
@@ -44,10 +44,10 @@ library gsb-vision
                     , Image.Zncc
                     , Image.Frame
                     , Vision.Board
-    build-depends:    base ^>=4.22.0.0
-                    , JuicyPixels ^>=3.3.9
-                    , bytestring
-                    , vector
+    build-depends:    base ^>= 4.22.0.0
+                    , JuicyPixels >= 3.3.9 && < 3.4
+                    , bytestring >= 0.12.2 && < 0.13
+                    , vector >= 0.13.2 && < 0.14
                     , gems-seeker-bot:gsb-search
 
 -- The hands: macOS window geometry, frame grab, and swipe gestures
@@ -59,10 +59,10 @@ library gsb-mac
                     , Mac.Gesture
     if !os(osx)
         buildable: False
-    build-depends:    base ^>=4.22.0.0
-                    , bytestring
-                    , process
-                    , unliftio
+    build-depends:    base ^>= 4.22.0.0
+                    , bytestring >= 0.12.2 && < 0.13
+                    , process >= 1.6.26 && < 1.7
+                    , unliftio >= 0.2.25 && < 0.3
                     , gems-seeker-bot:gsb-search
 
 -- The bot: parse a board, solve it, replay the swipes. Darwin only.
@@ -72,7 +72,7 @@ executable gems-seeker-bot
     hs-source-dirs:   app
     if !os(osx)
         buildable: False
-    build-depends:    base ^>=4.22.0.0
+    build-depends:    base ^>= 4.22.0.0
                     , gems-seeker-bot:gsb-search
                     , gems-seeker-bot:gsb-vision
                     , gems-seeker-bot:gsb-mac
@@ -82,6 +82,6 @@ test-suite gsb-test
     type:             exitcode-stdio-1.0
     main-is:          Spec.hs
     hs-source-dirs:   test
-    build-depends:    base ^>=4.22.0.0
-                    , hspec
+    build-depends:    base ^>= 4.22.0.0
+                    , hspec >= 2.11.17 && < 2.12
                     , gems-seeker-bot:gsb-search
