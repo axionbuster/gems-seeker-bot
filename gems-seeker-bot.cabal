@@ -12,6 +12,13 @@ extra-doc-files:    CLAUDE.md
                   , README.md
                   , CHANGELOG.md
                   , LICENSE
+extra-source-files: assets/readme/*.png
+                  , assets/templates/*.png
+                  , src/mac/Mac/Native.h
+                  , test/fixtures/cases/*.out
+                  , test/fixtures/cases/*.txt
+                  , test/fixtures/frames/*.board
+                  , test/fixtures/frames/*.png
 
 -- Shared settings. StrictData (NOT Strict — see CLAUDE.md) gives strict fields;
 -- add {-# UNPACK #-} on simple fields to keep numbers out of boxes.
@@ -61,8 +68,19 @@ library gsb-mac
     hs-source-dirs:   src/mac
     exposed-modules:  Mac.Mirror
                     , Mac.Gesture
+    other-modules:    Mac.Native
     if !os(osx)
         buildable: False
+    c-sources:        src/mac/Mac/Native.m
+    include-dirs:     src/mac/Mac
+    includes:         Native.h
+    cc-options:       -fobjc-arc
+                      -fblocks
+    frameworks:       ApplicationServices
+                    , CoreGraphics
+                    , Foundation
+                    , ImageIO
+                    , ScreenCaptureKit
     build-depends:    base ^>= 4.22.0.0
                     , bytestring >= 0.12.2 && < 0.13
                     , process >= 1.6.26 && < 1.7

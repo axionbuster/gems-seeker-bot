@@ -13,7 +13,7 @@ import           Codec.Picture.Types  (convertImage)
 import qualified Data.ByteString      as B
 import qualified Data.ByteString.Lazy as BL
 
--- | Decode arbitrary image bytes (a PNG from @screencapture@ in practice) and
+-- | Decode arbitrary image bytes (a captured PNG in practice) and
 -- re-encode as JPEG. 'Left' carries the decoder's message on failure.
 pngToJpeg :: B.ByteString -> Either String B.ByteString
 pngToJpeg bytes = encodeRgb . convertRGB8 <$> decodeImage bytes

@@ -208,8 +208,8 @@ appName :: IO String
 appName = maybe "iPhone Mirroring" id <$> lookupEnv "GSB_APP"
 
 data SystemDependency = SystemDependency
-  { dependencyName :: String
-  , dependencyHint :: String
+  { dependencyName  :: String
+  , dependencyHint  :: String
   , dependencyCheck :: IO Bool
   }
 
@@ -227,19 +227,9 @@ probeSystemDependencies = do
 systemDependencies :: [SystemDependency]
 systemDependencies =
   [ SystemDependency
-      { dependencyName = "screencapture"
-      , dependencyHint = "ships with macOS"
-      , dependencyCheck = binaryAvailable "screencapture" ["/usr/sbin/screencapture"]
-      }
-  , SystemDependency
       { dependencyName = "osascript"
       , dependencyHint = "ships with macOS"
       , dependencyCheck = binaryAvailable "osascript" ["/usr/bin/osascript"]
-      }
-  , SystemDependency
-      { dependencyName = "cliclick"
-      , dependencyHint = "install with `brew install cliclick`"
-      , dependencyCheck = binaryAvailable "cliclick" ["/opt/homebrew/bin/cliclick", "/usr/local/bin/cliclick"]
       }
   ]
 

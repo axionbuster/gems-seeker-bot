@@ -8,12 +8,11 @@ Working notes for Codex in this repository.
 
 ## Required system dependencies
 
-- macOS
+- macOS 15.2 or later
 - Cabal
 - GHC 9.14.x
-- `cliclick` installed and available on `PATH` (`brew install cliclick`)
 - Accessibility permission for the terminal or runner that drives the bot
-- Screen Recording permission if macOS prompts for `screencapture`
+- Screen Recording permission for the terminal or runner that captures frames
 
 ## Build and run
 
@@ -47,5 +46,6 @@ Working notes for Codex in this repository.
 ## Notes
 
 - `app/Main.hs` exposes `solve`, `parse`, `capture`, `swipe`, and `run` subcommands.
-- The startup probe checks that the macOS command-line tools the app needs are installed before capture, swipe, or run mode starts.
+- Screen capture and pointer gestures use the Objective-C bridge in `src/mac/Mac/Native.m`.
+- The startup probe checks that `osascript` is available before capture, swipe, or run mode starts.
 - If you add new documentation, make it self-contained and keep the prose aligned with the current code.

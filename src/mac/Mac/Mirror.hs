@@ -15,15 +15,13 @@ module Mac.Mirror
   , captureFrame
   ) where
 
-import           Control.Monad      (void)
-import           Data.ByteString    (ByteString)
-import qualified Data.ByteString    as BS
-import           Data.List          (intercalate, maximumBy)
-import           Data.Ord           (comparing)
-import           System.Exit        (ExitCode (..))
-import           System.IO          (hClose)
-import           UnliftIO.Process   (callProcess, readProcessWithExitCode)
-import           UnliftIO.Temporary (withSystemTempFile)
+import           Control.Monad    (void)
+import           Data.ByteString  (ByteString)
+import           Data.List        (maximumBy)
+import           Data.Ord         (comparing)
+import qualified Mac.Native       as Native
+import           System.Exit      (ExitCode (..))
+import           UnliftIO.Process (readProcessWithExitCode)
 
 -- | A screen rectangle, in points.
 data Rect = Rect
@@ -108,14 +106,10 @@ focusApp appName =
       ["-e", "tell application \"" ++ appName ++ "\" to activate"]
       ""
 
--- | Grab a screen region as PNG bytes (silently, no window shadow), via a temp
--- file. The PNG comes back at retina pixel resolution, which the parser handles.
+-- | Grab a screen region as PNG bytes. ScreenCaptureKit returns native display
+-- pixels, so Retina captures contain two pixels per screen point.
 captureFrame :: Rect -> IO ByteString
-captureFrame (Rect x y w h) =
-  withSystemTempFile "gsb-frame.png" $ \path handle -> do
-    hClose handle
-    callProcess "screencapture" ["-x", "-o", "-R" ++ intercalate "," (map show [x, y, w, h]), path]
-    BS.readFile path
+captureFrame (Rect x y w h) = Native.capturePng x y w h
 
 -- helpers ---------------------------------------------------------------------
 

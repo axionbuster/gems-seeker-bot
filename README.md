@@ -8,18 +8,17 @@ It captures the game window, reads the board from a few frames, solves the level
 
 ## What it does
 
-- Captures the mirrored phone window with macOS tools.
+- Captures the mirrored phone window through ScreenCaptureKit.
 - Parses the board from 1 to 3 good frames.
 - Solves the full board before it starts replaying moves.
-- Replays gravity moves with `cliclick`.
+- Replays gravity moves with native Core Graphics events.
 
 ## Requirements
 
-- macOS
+- macOS 15.2 or later
 - Cabal and GHC 9.14.x
-- `cliclick` on `PATH` (`brew install cliclick`)
 - Accessibility permission for the terminal or runner
-- Screen Recording permission if `screencapture` prompts for access
+- Screen Recording permission for the terminal or runner
 
 ## Quick Start
 

@@ -1,11 +1,11 @@
 -- | Replay solver moves as macOS swipe gestures.
 --
--- Each swipe is an absolute @cliclick@ drag from the window centre about 100px
--- in the move's direction, so no human cursor placement is needed.
+-- Each swipe is an absolute pointer drag from the window centre about 100px
+-- in the move's direction, split into a few evenly spaced pointer events.
 module Mac.Gesture
   ( swipe
   , swipeTarget
-  , cliclickArgs
+  , swipePath
   , imagePointToScreen
   , clickPoint
   , replay
@@ -13,21 +13,24 @@ module Mac.Gesture
 
 import           Board               (Dir (..))
 import           Mac.Mirror          (Rect (..), windowCenter)
+import qualified Mac.Native          as Native
 import           UnliftIO.Concurrent (threadDelay)
-import           UnliftIO.Process    (callProcess)
 
 -- | Distance, in points, dragged from the window centre for a swipe.
 swipeDelta :: Int
 swipeDelta = 100
 
--- | Brief pause before pressing, in milliseconds. This leaves the app enough
--- time to receive focus without slowing every move to the old two-second pace.
-preSwipeDelayMs :: Int
-preSwipeDelayMs = 100
+-- | Time for the app to receive focus before the drag starts, in microseconds.
+preSwipeDelay :: Int
+preSwipeDelay = 500000
 
 -- | Time after a swipe for the gravity animation to settle, in microseconds.
 moveSettleDelay :: Int
-moveSettleDelay = 250000
+moveSettleDelay = 1000000
+
+-- | Number of intermediate drag events in one swipe.
+swipeSteps :: Int
+swipeSteps = 5
 
 -- | Endpoint of the drag for a gravity direction (window centre offset by
 -- 'swipeDelta').
@@ -40,21 +43,18 @@ swipeTarget rect dir = case dir of
   where
     (cx, cy) = windowCenter rect
 
--- | The @cliclick@ argument vector for one swipe: settle, press at centre, drag
--- to the target, release. Pure so it can be unit-tested.
-cliclickArgs :: Rect -> Dir -> [String]
-cliclickArgs rect dir =
-  [ "-e", "500"
-  , "w:" ++ show preSwipeDelayMs
-  , "m:" ++ point (cx, cy)
-  , "dd:" ++ point (cx, cy)
-  , "dm:" ++ point (tx, ty)
-  , "du:" ++ point (tx, ty)
-  ]
+-- | Absolute screen points for one swipe, including its start and endpoint.
+swipePath :: Rect -> Dir -> [(Int, Int)]
+swipePath rect dir = (cx, cy) : dragPoints
   where
     (cx, cy) = windowCenter rect
     (tx, ty) = swipeTarget rect dir
-    point (x, y) = show x ++ "," ++ show y
+    dragPoints =
+      [ ( cx + ((tx - cx) * step) `div` swipeSteps
+        , cy + ((ty - cy) * step) `div` swipeSteps
+        )
+      | step <- [1 .. swipeSteps]
+      ]
 
 -- | Convert a point in captured-image pixels to an absolute screen point.
 imagePointToScreen :: Rect -> (Int, Int) -> (Int, Int) -> (Int, Int)
@@ -68,11 +68,13 @@ imagePointToScreen rect (imageWidth, imageHeight) (imageX, imageY) =
 
 -- | Click one absolute screen point.
 clickPoint :: (Int, Int) -> IO ()
-clickPoint (x, y) = callProcess "cliclick" ["c:" ++ show x ++ "," ++ show y]
+clickPoint = Native.click
 
 -- | One gravity swipe within a region.
 swipe :: Rect -> Dir -> IO ()
-swipe rect dir = callProcess "cliclick" (cliclickArgs rect dir)
+swipe rect dir = do
+  threadDelay preSwipeDelay
+  Native.drag (swipePath rect dir)
 
 -- | Replay a full solution as a sequence of swipes, pausing briefly so
 -- the board settles. Focus the target app first (see 'Mac.Mirror.focusApp').

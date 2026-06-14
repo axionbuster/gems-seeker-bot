@@ -22,8 +22,7 @@ import           Vision.Board     (parseBoard, prepareTemplates,
 import           Vision.Screen    (findPlayButton)
 
 #ifdef DARWIN
-import           Mac.Gesture      (cliclickArgs, imagePointToScreen,
-                                   swipeTarget)
+import           Mac.Gesture      (imagePointToScreen, swipePath, swipeTarget)
 import           Mac.Mirror       (Rect (..), parseGeometries, parseGeometry,
                                    selectPhoneWindow, windowCenter)
 #endif
@@ -227,9 +226,16 @@ main = hspec $ do
       swipeTarget rect D `shouldBe` (100, 200)
       swipeTarget rect L `shouldBe` (0, 100)
       swipeTarget rect R `shouldBe` (200, 100)
-    it "builds a press/drag/release cliclick vector" $
-      cliclickArgs rect R
-        `shouldBe` ["-e", "500", "w:100", "m:100,100", "dd:100,100", "dm:200,100", "du:200,100"]
+    it "builds a short linear drag path" $
+      swipePath rect R
+        `shouldBe`
+          [ (100, 100)
+          , (120, 100)
+          , (140, 100)
+          , (160, 100)
+          , (180, 100)
+          , (200, 100)
+          ]
 
     it "maps Retina image pixels into screen points" $
       imagePointToScreen (Rect 17 30 348 766) (696, 1532) (348, 1362)
