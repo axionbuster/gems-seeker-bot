@@ -21,6 +21,15 @@ import UnliftIO.Process (callProcess)
 swipeDelta :: Int
 swipeDelta = 100
 
+-- | Brief pause before pressing, in milliseconds. This leaves the app enough
+-- time to receive focus without slowing every move to the old two-second pace.
+preSwipeDelayMs :: Int
+preSwipeDelayMs = 100
+
+-- | Time after a swipe for the gravity animation to settle, in microseconds.
+moveSettleDelay :: Int
+moveSettleDelay = 250000
+
 -- | Endpoint of the drag for a gravity direction (window centre offset by
 -- 'swipeDelta').
 swipeTarget :: Rect -> Dir -> (Int, Int)
@@ -37,7 +46,7 @@ swipeTarget rect dir = case dir of
 cliclickArgs :: Rect -> Dir -> [String]
 cliclickArgs rect dir =
   [ "-e", "500"
-  , "w:2000"
+  , "w:" ++ show preSwipeDelayMs
   , "m:" ++ point (cx, cy)
   , "dd:" ++ point (cx, cy)
   , "dm:" ++ point (tx, ty)
@@ -52,7 +61,7 @@ cliclickArgs rect dir =
 swipe :: Rect -> Dir -> IO ()
 swipe rect dir = callProcess "cliclick" (cliclickArgs rect dir)
 
--- | Replay a full solution as a sequence of swipes, pausing ~1s between them so
+-- | Replay a full solution as a sequence of swipes, pausing briefly so
 -- the board settles. Focus the target app first (see 'Mac.Mirror.focusApp').
 replay :: Rect -> [Dir] -> IO ()
 replay rect = go
@@ -60,5 +69,5 @@ replay rect = go
     go [] = pure ()
     go (d : ds) = do
       swipe rect d
-      threadDelay 1000000
+      threadDelay moveSettleDelay
       go ds

@@ -3,7 +3,7 @@
 -- Ported from @references/experiments@ (@app/Experiment2.hs@), restyled and
 -- trimmed to the classification pipeline the bot actually needs:
 --
---   1. 'estimateGrid' — locate the two yellow HUD gems in the top half, and from
+--   1. 'estimateGrid' — locate the two yellow HUD controls in the top half, and from
 --      their separation derive the grid pitch and origin (a fixed affine of that
 --      separation; see the calibrated constants below).
 --   2. 'findPlayfield' — flood the largest connected run of \"occupied\" cells to
@@ -14,6 +14,7 @@
 --   4. 'classifyFrame' — threshold those into gem\/bat\/air, flood walls in from
 --      the boundary, and take the heaviest leftover component as the player.
 --   5. 'consensusMap' — majority-vote across frames.
+--   6. 'validateParsedBoard' — reject maps that cannot represent a playable scene.
 --
 -- Calibration is frozen ('calibratedThresholds', from the same 61-frame run that
 -- produced @calibration.txt@); we do not re-derive thresholds at runtime. The
@@ -28,6 +29,7 @@ module Vision.Board
   , Templates (..)
   , prepareTemplates
   , parseBoard
+  , validateParsedBoard
   , Grid (..)
   , GridRect (..)
   , CellBounds (..)
@@ -40,13 +42,12 @@ import Board (Board (..), Cell (..))
 import Codec.Picture
   ( Image
   , Pixel8
-  , PixelCMYK8 (..)
   , PixelRGB8 (..)
   , imageHeight
   , imageWidth
   , pixelAt
   )
-import Codec.Picture.Types (convertImage, pixelMap)
+import Codec.Picture.Types (pixelMap)
 import Control.Monad (forM)
 import Control.Monad.ST (ST, runST)
 import Data.Array.ST (STUArray, newArray, readArray, writeArray)
@@ -126,7 +127,23 @@ parseBoard templates frames = do
         | (image, grid, _) <- perFrame
         ]
       cells = consensusMap maps
-  pure (Board w h (concat cells))
+  validateParsedBoard (Board w h (concat cells))
+
+-- | Require the object counts needed to solve and replay a freshly captured
+-- board. A malformed parse must stop before the solver can treat it as a win.
+validateParsedBoard :: Board -> Either String Board
+validateParsedBoard board@Board {boardCells}
+  | playerCount /= 1 =
+      Left
+        ( "Vision.Board.parseBoard: expected exactly one player, found "
+            ++ show playerCount
+        )
+  | gemCount == 0 =
+      Left "Vision.Board.parseBoard: expected at least one gem"
+  | otherwise = Right board
+  where
+    playerCount = length (filter (== Player) boardCells)
+    gemCount = length (filter (== Gem) boardCells)
 
 -- 1. Grid and playfield geometry --------------------------------------------
 
@@ -150,7 +167,7 @@ gridRectWidth GridRect {minCellX, maxCellX} = maxCellX - minCellX + 1
 gridRectHeight :: GridRect -> Int
 gridRectHeight GridRect {minCellY, maxCellY} = maxCellY - minCellY + 1
 
--- | Find the two yellow HUD-gem clusters in the top half of the frame and turn
+-- | Find the two yellow HUD-control clusters in the top half of the frame and turn
 -- their horizontal separation into a grid pitch and origin.
 estimateGrid :: Image PixelRGB8 -> Either String Grid
 estimateGrid image =
@@ -165,12 +182,10 @@ estimateGrid image =
         originFloat = firstCenter + (0.14743 :+ 0.60539) * (distance :+ 0)
         origin = (round (realPart originFloat), round (imagPart originFloat))
   where
-    converted = convertImage image :: Image PixelCMYK8
-    width = imageWidth converted
-    height = imageHeight converted
+    width = imageWidth image
+    height = imageHeight image
     topHeight = height `div` 2
-    yellowish (PixelCMYK8 cyan magenta _yellow black) =
-      cyan < 100 && magenta < 100 && black < 110
+    yellowish = isBrightYellow
 
     clusters :: [[(Int, Int)]]
     clusters = runST $ do
@@ -192,7 +207,7 @@ estimateGrid image =
               go acc [] = pure acc
               go acc (p@(x, y) : pending) = do
                 seen <- readArray visited (x, y)
-                if seen || not (yellowish (pixelAt converted x y))
+                if seen || not (yellowish (pixelAt image x y))
                   then go acc pending
                   else do
                     writeArray visited (x, y) True
@@ -201,7 +216,7 @@ estimateGrid image =
         forM [0 .. topHeight - 1] $ \y ->
           forM [0 .. width - 1] $ \x -> do
             seen <- readArray visited (x, y)
-            if not seen && yellowish (pixelAt converted x y)
+            if not seen && yellowish (pixelAt image x y)
               then dfs (x, y)
               else pure []
       pure (filter ((> 25) . length) (concat raw))
@@ -374,7 +389,11 @@ isBrightYellow :: PixelRGB8 -> Bool
 isBrightYellow (PixelRGB8 red green blue) = red >= 160 && green >= 160 && blue <= 120
 
 isBrightCyan :: PixelRGB8 -> Bool
-isBrightCyan (PixelRGB8 red green blue) = red <= 100 && green >= 140 && blue >= 120
+isBrightCyan (PixelRGB8 red green blue) =
+  green >= 180
+    && blue >= 150
+    && fromIntegral green >= fromIntegral red + (70 :: Int)
+    && fromIntegral blue >= fromIntegral red + (50 :: Int)
 
 luminanceImage :: Image PixelRGB8 -> Image PixelRGB8
 luminanceImage = pixelMap toLuminance

@@ -23,7 +23,7 @@ import Solve (parseCase, solve)
 
 import Image (Image, PixelRGB8 (..), convertRGB8, generateImage, pixelAt, readImage)
 import Image.Zncc (bestZncc, zncc)
-import Vision.Board (parseBoard, prepareTemplates)
+import Vision.Board (parseBoard, prepareTemplates, validateParsedBoard)
 
 #ifdef DARWIN
 import Mac.Mirror (Rect (..), parseGeometry, windowCenter)
@@ -220,7 +220,7 @@ main = hspec $ do
       swipeTarget rect R `shouldBe` (200, 100)
     it "builds a press/drag/release cliclick vector" $
       cliclickArgs rect R
-        `shouldBe` ["-e", "500", "w:2000", "m:100,100", "dd:100,100", "dm:200,100", "du:200,100"]
+        `shouldBe` ["-e", "500", "w:100", "m:100,100", "dd:100,100", "dm:200,100", "du:200,100"]
 #endif
 
   -- CV oracle: the reference Experiment2 classifies every one of its 61 frames
@@ -248,6 +248,42 @@ main = hspec $ do
         expected <- runIO (readFile fixturePath)
         it "reproduces the reference consensus board" $
           fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+
+  describe "Vision.Board.parseBoard (live iPhone Mirroring capture)" $ do
+    let framePath = "test/fixtures/frames/live-window.png"
+        fixturePath = "test/fixtures/frames/live-window.board"
+        required =
+          [ "assets/templates/gem.png"
+          , "assets/templates/bat.png"
+          , framePath
+          , fixturePath
+          ]
+    missing <- runIO (filterM (fmap not . doesFileExist) required)
+    if not (null missing)
+      then it "parses the current theme through surrounding window chrome" $
+        pendingWith ("missing fixtures: " ++ show missing)
+      else do
+        result <- runIO $ do
+          gemT <- loadRGB8 "assets/templates/gem.png"
+          batT <- loadRGB8 "assets/templates/bat.png"
+          frame <- loadRGB8 framePath
+          pure (parseBoard (prepareTemplates gemT batT) [frame])
+        expected <- runIO (readFile fixturePath)
+        it "parses the current theme through surrounding window chrome" $
+          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+
+  describe "Vision.Board.validateParsedBoard" $ do
+    it "accepts one player with at least one gem" $
+      validateParsedBoard (Board 2 1 [Player, Gem])
+        `shouldBe` Right (Board 2 1 [Player, Gem])
+
+    it "rejects a scene with multiple player cells" $
+      validateParsedBoard (Board 3 1 [Player, Player, Gem])
+        `shouldBe` Left "Vision.Board.parseBoard: expected exactly one player, found 2"
+
+    it "rejects a scene without a remaining gem" $
+      validateParsedBoard (Board 1 1 [Player])
+        `shouldBe` Left "Vision.Board.parseBoard: expected at least one gem"
 
   caseSpec "case0 (no bats, 6x8)"
     "references/pure-solver/case0.txt"
