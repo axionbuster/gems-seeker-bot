@@ -75,6 +75,7 @@ executable gems-seeker-bot
     if !os(osx)
         buildable: False
     build-depends:    base ^>= 4.22.0.0
+                    , bytestring >= 0.12.2 && < 0.13
                     , gems-seeker-bot:gsb-search
                     , gems-seeker-bot:gsb-vision
                     , gems-seeker-bot:gsb-mac
