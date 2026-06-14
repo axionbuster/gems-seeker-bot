@@ -38,34 +38,28 @@ module Vision.Board
   , cellBounds
   ) where
 
-import Board (Board (..), Cell (..))
-import Codec.Picture
-  ( Image
-  , Pixel8
-  , PixelRGB8 (..)
-  , imageHeight
-  , imageWidth
-  , pixelAt
-  )
-import Codec.Picture.Types (pixelMap)
-import Control.Monad (forM)
-import Control.Monad.ST (ST, runST)
-import Data.Array.ST (STUArray, newArray, readArray, writeArray)
-import Data.Complex (Complex (..), imagPart, realPart)
-import Data.List (delete, group, sort)
-import Image.Frame (resizeNearest)
-import Image.Zncc (zncc)
+import           Board               (Board (..), Cell (..))
+import           Codec.Picture       (Image, Pixel8, PixelRGB8 (..),
+                                      imageHeight, imageWidth, pixelAt)
+import           Codec.Picture.Types (pixelMap)
+import           Control.Monad       (forM)
+import           Control.Monad.ST    (ST, runST)
+import           Data.Array.ST       (STUArray, newArray, readArray, writeArray)
+import           Data.Complex        (Complex (..), imagPart, realPart)
+import           Data.List           (delete, group, sort)
+import           Image.Frame         (resizeNearest)
+import           Image.Zncc          (zncc)
 
 -- | Per-cell classification thresholds, measured and frozen from the calibration
 -- run in references/experiments (@calibration.txt@). Constants now.
 data Thresholds = Thresholds
-  { gemLumaThreshold :: {-# UNPACK #-} !Double
-  , gemMaskThreshold :: {-# UNPACK #-} !Double
-  , gemYellowFraction :: {-# UNPACK #-} !Double
-  , batLumaThreshold :: {-# UNPACK #-} !Double
-  , batMaskThreshold :: {-# UNPACK #-} !Double
-  , batCyanFraction :: {-# UNPACK #-} !Double
-  , airForegroundFraction :: {-# UNPACK #-} !Double
+  { gemLumaThreshold           :: {-# UNPACK #-} !Double
+  , gemMaskThreshold           :: {-# UNPACK #-} !Double
+  , gemYellowFraction          :: {-# UNPACK #-} !Double
+  , batLumaThreshold           :: {-# UNPACK #-} !Double
+  , batMaskThreshold           :: {-# UNPACK #-} !Double
+  , batCyanFraction            :: {-# UNPACK #-} !Double
+  , airForegroundFraction      :: {-# UNPACK #-} !Double
   , occupiedForegroundFraction :: {-# UNPACK #-} !Double
   }
   deriving (Eq, Show)
@@ -221,7 +215,7 @@ validateBoardEnvelope board@Board {boardW, boardH, boardCells}
 -- 1. Grid and playfield geometry --------------------------------------------
 
 data Grid = Grid
-  { gridPitch :: !Double
+  { gridPitch  :: !Double
   , gridOrigin :: !(Int, Int)
   }
   deriving (Eq, Show)
@@ -365,9 +359,9 @@ boundsInside image CellBounds {cellLeft, cellTop, cellWidth, cellHeight} =
 -- 2. Cell geometry and measurements -----------------------------------------
 
 data CellBounds = CellBounds
-  { cellLeft :: !Int
-  , cellTop :: !Int
-  , cellWidth :: !Int
+  { cellLeft   :: !Int
+  , cellTop    :: !Int
+  , cellWidth  :: !Int
   , cellHeight :: !Int
   }
   deriving (Eq, Show)
@@ -385,13 +379,13 @@ cellBounds pitch (originX, originY) (cellX, cellY) =
 -- | The per-cell evidence classification needs: four ZNCC scores and three
 -- pixel-fraction summaries.
 data CellMeasurement = CellMeasurement
-  { gemLumaScore :: !Double
-  , gemMaskScore :: !Double
-  , batLumaScore :: !Double
-  , batMaskScore :: !Double
+  { gemLumaScore       :: !Double
+  , gemMaskScore       :: !Double
+  , batLumaScore       :: !Double
+  , batMaskScore       :: !Double
   , foregroundFraction :: !Double
-  , yellowFraction :: !Double
-  , cyanFraction :: !Double
+  , yellowFraction     :: !Double
+  , cyanFraction       :: !Double
   }
   deriving (Eq, Show)
 
@@ -543,7 +537,7 @@ classifyFrame thresholds width height measurements =
       if null explicitPlayerCells
         then
           case maximumBy componentWeight (connectedComponents disconnectedOccupied) of
-            Nothing -> []
+            Nothing        -> []
             Just component -> component
         else []
     componentWeight = sum . map (foregroundFraction . measurementAt)
@@ -610,7 +604,7 @@ consensusMap maps@(firstMap : _) =
   where
     height = length firstMap
     width = case firstMap of
-      [] -> 0
+      []           -> 0
       firstRow : _ -> length firstRow
     votesAt x y = [(frameMap !! y) !! x | frameMap <- maps]
 
@@ -620,7 +614,7 @@ winningCell votes = snd (foldl1 max (voteCounts votes))
   where
     voteCounts = map count . group . sort
     count g = (length g, headOr Air g)
-    headOr d [] = d
+    headOr d []      = d
     headOr _ (c : _) = c
 
 -- generic helpers -----------------------------------------------------------

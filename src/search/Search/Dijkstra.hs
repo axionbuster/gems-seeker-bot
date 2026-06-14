@@ -15,10 +15,10 @@ module Search.Dijkstra
   ( dijkstra
   ) where
 
-import Data.Hashable (Hashable)
-import Data.HashMap.Strict (HashMap)
+import           Data.Hashable       (Hashable)
+import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
-import qualified Data.HashPSQ as Q
+import qualified Data.HashPSQ        as Q
 
 -- | How a state was reached: either the start (no predecessor) or a step
 -- carrying its cost, predecessor, and the edge label taken. @Step@ is listed
@@ -59,11 +59,11 @@ dijkstra start isGoal successors =
     recon costs = walk [] []
       where
         walk accS accH k = case costs M.! k of
-          Start -> (k : accS, accH)
+          Start        -> (k : accS, accH)
           Step _ k' h' -> walk (k : accS) (h' : accH) k'
 
 lookupCost :: (Hashable s, Ord s) => s -> HashMap s (Node s h) -> Int
 lookupCost k m = case M.lookup k m of
-  Just Start -> 0
+  Just Start           -> 0
   Just (Step cost _ _) -> cost
-  Nothing -> maxBound
+  Nothing              -> maxBound

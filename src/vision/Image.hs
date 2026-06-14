@@ -9,6 +9,6 @@ module Image
   , module Image.Frame
   ) where
 
-import Codec.Picture
-import Image.Frame
-import Image.Zncc
+import           Codec.Picture
+import           Image.Frame
+import           Image.Zncc

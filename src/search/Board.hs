@@ -32,16 +32,17 @@ module Board
   , cellToChar
   ) where
 
-import Control.Monad (unless, when)
-import Control.Monad.ST (ST, runST)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import Data.Array (Array, elems, listArray)
-import Data.Array.MArray (freeze, readArray, thaw, writeArray)
-import Data.Array.ST (STArray)
-import Data.Hashable (Hashable)
-import Data.STRef (newSTRef, readSTRef, writeSTRef)
-import GHC.Generics (Generic)
+import           Control.Monad              (unless, when)
+import           Control.Monad.ST           (ST, runST)
+import           Control.Monad.Trans.Class  (lift)
+import           Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
+import           Data.Array                 (Array, elems, listArray)
+import           Data.Array.MArray          (freeze, readArray, thaw,
+                                             writeArray)
+import           Data.Array.ST              (STArray)
+import           Data.Hashable              (Hashable)
+import           Data.STRef                 (newSTRef, readSTRef, writeSTRef)
+import           GHC.Generics               (Generic)
 
 -- | One grid cell. Glyphs: @.@ air, @\@@ gem, @%@ bat, @#@ wall, @*@ player.
 data Cell = Air | Gem | Bat | Wall | Player
@@ -61,8 +62,8 @@ allDirs = [minBound .. maxBound]
 
 -- | A board: row-major cells of a @boardW@ x @boardH@ grid.
 data Board = Board
-  { boardW :: {-# UNPACK #-} !Int
-  , boardH :: {-# UNPACK #-} !Int
+  { boardW     :: {-# UNPACK #-} !Int
+  , boardH     :: {-# UNPACK #-} !Int
   , boardCells :: ![Cell]
   }
   deriving (Eq, Ord, Show, Generic)
@@ -84,7 +85,7 @@ gemCount = length . filter (== Gem) . boardCells
 movable :: Cell -> Bool
 movable Gem = True
 movable Bat = True
-movable _ = False
+movable _   = False
 
 -- | Apply gravity: every movable piece slides until it hits a wall, a boundary,
 -- or another piece; a gem sliding onto the player is collected, a bat sliding
@@ -168,14 +169,14 @@ cellFromChar '@' = Gem
 cellFromChar '%' = Bat
 cellFromChar '#' = Wall
 cellFromChar '*' = Player
-cellFromChar _ = Air
+cellFromChar _   = Air
 
 -- | Cell -> glyph.
 cellToChar :: Cell -> Char
-cellToChar Air = '.'
-cellToChar Gem = '@'
-cellToChar Bat = '%'
-cellToChar Wall = '#'
+cellToChar Air    = '.'
+cellToChar Gem    = '@'
+cellToChar Bat    = '%'
+cellToChar Wall   = '#'
 cellToChar Player = '*'
 
 -- | Build a board from grid lines (height = number of lines, width = length of
@@ -193,6 +194,6 @@ renderBoard (Board w _ cells) =
     chunks _ [] = []
     chunks n xs = let (a, b) = splitAt n xs in a : chunks n b
     unlinesNoTrailing = foldr1NL
-    foldr1NL [] = ""
-    foldr1NL [x] = x
+    foldr1NL []       = ""
+    foldr1NL [x]      = x
     foldr1NL (x : xs) = x ++ "\n" ++ foldr1NL xs

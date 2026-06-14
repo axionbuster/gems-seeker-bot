@@ -11,8 +11,9 @@ module Image.Zncc
   , bestZncc
   ) where
 
-import Codec.Picture (Image, PixelRGB8 (..), imageHeight, imageWidth, pixelAt)
-import Codec.Picture.Types (pixelFold)
+import           Codec.Picture       (Image, PixelRGB8 (..), imageHeight,
+                                      imageWidth, pixelAt)
+import           Codec.Picture.Types (pixelFold)
 
 -- | ZNCC of @template@ against @source@ with the template's top-left corner at
 -- @(offsetX, offsetY)@ in the source.

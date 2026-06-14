@@ -17,15 +17,15 @@ module Mac.Mirror
   , captureFrame
   ) where
 
-import Control.Monad (void)
-import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
-import Data.List (intercalate, maximumBy)
-import Data.Ord (comparing)
-import System.Exit (ExitCode (..))
-import System.IO (hClose)
-import UnliftIO.Process (callProcess, readProcessWithExitCode)
-import UnliftIO.Temporary (withSystemTempFile)
+import           Control.Monad      (void)
+import           Data.ByteString    (ByteString)
+import qualified Data.ByteString    as BS
+import           Data.List          (intercalate, maximumBy)
+import           Data.Ord           (comparing)
+import           System.Exit        (ExitCode (..))
+import           System.IO          (hClose)
+import           UnliftIO.Process   (callProcess, readProcessWithExitCode)
+import           UnliftIO.Temporary (withSystemTempFile)
 
 -- | A screen rectangle, in points.
 data Rect = Rect
@@ -67,11 +67,11 @@ parseGeometry :: String -> Maybe Rect
 parseGeometry raw =
   case map readInt (splitOn ',' (trim raw)) of
     [Just x, Just y, Just w, Just h] -> Just (Rect x y w h)
-    _ -> Nothing
+    _                                -> Nothing
   where
     readInt s = case reads (trim s) :: [(Double, String)] of
       [(d, "")] -> Just (round d)
-      _ -> Nothing
+      _         -> Nothing
 
 -- | Parse every non-empty geometry line emitted by 'geometryScript'.
 parseGeometries :: String -> [Rect]
@@ -81,7 +81,7 @@ parseGeometries = mapMaybe parseGeometry . filter (not . null) . lines
 selectPhoneWindow :: [Rect] -> Maybe Rect
 selectPhoneWindow rects =
   case filter phoneLike rects of
-    [] -> Nothing
+    []         -> Nothing
     candidates -> Just (maximumBy (comparing area) candidates)
   where
     phoneLike Rect {rectW, rectH} =
@@ -97,7 +97,7 @@ findWindow appName = do
   (code, out, _err) <-
     readProcessWithExitCode "osascript" ["-e", geometryScript appName] ""
   pure $ case code of
-    ExitSuccess -> selectPhoneWindow (parseGeometries out)
+    ExitSuccess   -> selectPhoneWindow (parseGeometries out)
     ExitFailure _ -> Nothing
 
 -- | Bring an application to the foreground. Capture works without this, but
@@ -135,7 +135,7 @@ mapMaybe f = foldr step []
     step value rest =
       case f value of
         Just result -> result : rest
-        Nothing -> rest
+        Nothing     -> rest
 
 trim :: String -> String
 trim = f . f

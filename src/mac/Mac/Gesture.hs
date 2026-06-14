@@ -14,10 +14,10 @@ module Mac.Gesture
   , replay
   ) where
 
-import Board (Dir (..))
-import Mac.Mirror (Rect (..), windowCenter)
-import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.Process (callProcess)
+import           Board               (Dir (..))
+import           Mac.Mirror          (Rect (..), windowCenter)
+import           UnliftIO.Concurrent (threadDelay)
+import           UnliftIO.Process    (callProcess)
 
 -- | Distance, in points, dragged from the window centre for a swipe.
 swipeDelta :: Int

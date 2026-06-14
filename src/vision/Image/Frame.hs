@@ -9,10 +9,10 @@ module Image.Frame
   , resizeNearest
   ) where
 
-import Codec.Picture
-import Codec.Picture.Types (convertImage)
-import Data.ByteString qualified as B
-import Data.ByteString.Lazy qualified as BL
+import           Codec.Picture
+import           Codec.Picture.Types  (convertImage)
+import qualified Data.ByteString      as B
+import qualified Data.ByteString.Lazy as BL
 
 -- | Decode arbitrary image bytes (a PNG from @screencapture@ in practice) and
 -- re-encode as JPEG. 'Left' carries the decoder's message on failure.

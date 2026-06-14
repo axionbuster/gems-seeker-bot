@@ -13,41 +13,36 @@
 -- with the @GSB_APP@ environment variable.
 module Main (main) where
 
-import Control.Concurrent (threadDelay)
-import Data.ByteString qualified as BS
-import Data.Char (isDigit, toLower)
-import System.Environment (getArgs, lookupEnv)
-import System.Exit (exitFailure)
-import System.IO (hPutStrLn, stderr)
+import           Control.Concurrent (threadDelay)
+import qualified Data.ByteString    as BS
+import           Data.Char          (isDigit, toLower)
+import           System.Environment (getArgs, lookupEnv)
+import           System.Exit        (exitFailure)
+import           System.IO          (hPutStrLn, stderr)
 
-import Board (Board, Dir (..), boardFromLines, renderBoard)
-import Image
-  ( Image
-  , PixelRGB8
-  , convertRGB8
-  , decodeImage
-  , imageHeight
-  , imageWidth
-  , readImage
-  )
-import Mac.Gesture (clickPoint, imagePointToScreen, replay, swipe)
-import Mac.Mirror (Rect, captureFrame, findWindow, focusApp)
-import Solve (parseCase, solve)
-import Vision.Board (Templates, parseBoard, prepareTemplates)
-import Vision.Screen (findPlayButton)
+import           Board              (Board, Dir (..), boardFromLines,
+                                     renderBoard)
+import           Image              (Image, PixelRGB8, convertRGB8, decodeImage,
+                                     imageHeight, imageWidth, readImage)
+import           Mac.Gesture        (clickPoint, imagePointToScreen, replay,
+                                     swipe)
+import           Mac.Mirror         (Rect, captureFrame, findWindow, focusApp)
+import           Solve              (parseCase, solve)
+import           Vision.Board       (Templates, parseBoard, prepareTemplates)
+import           Vision.Screen      (findPlayButton)
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["solve", path] -> runSolve path
-    ["parse", path] -> runParse path
-    ["capture"] -> runCapture "frame.png"
+    ["solve", path]  -> runSolve path
+    ["parse", path]  -> runParse path
+    ["capture"]      -> runCapture "frame.png"
     ["capture", out] -> runCapture out
-    ["swipe", dir] -> runSwipe dir
-    ["run"] -> runFull
-    [] -> runFull
-    _ -> usage
+    ["swipe", dir]   -> runSwipe dir
+    ["run"]          -> runFull
+    []               -> runFull
+    _                -> usage
 
 usage :: IO ()
 usage = do
@@ -77,7 +72,7 @@ runParse path = do
   templates <- loadTemplates
   frame <- loadRGB8 path
   case parseBoard templates [frame] of
-    Left err -> die ("parse failed: " ++ err)
+    Left err    -> die ("parse failed: " ++ err)
     Right board -> putStr (renderBoard board ++ "\n")
 
 runCapture :: FilePath -> IO ()
@@ -208,15 +203,15 @@ appName = maybe "iPhone Mirroring" id <$> lookupEnv "GSB_APP"
 
 parseDir :: String -> Maybe Dir
 parseDir s = case map toLower s of
-  "up" -> Just U
-  "u" -> Just U
-  "down" -> Just D
-  "d" -> Just D
-  "left" -> Just L
-  "l" -> Just L
+  "up"    -> Just U
+  "u"     -> Just U
+  "down"  -> Just D
+  "d"     -> Just D
+  "left"  -> Just L
+  "l"     -> Just L
   "right" -> Just R
-  "r" -> Just R
-  _ -> Nothing
+  "r"     -> Just R
+  _       -> Nothing
 
 die :: String -> IO a
 die msg = hPutStrLn stderr msg >> exitFailure

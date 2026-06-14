@@ -2,40 +2,31 @@
 
 module Main (main) where
 
-import Control.Monad (filterM)
-import Data.Either (isRight)
-import Data.List (isInfixOf, isPrefixOf)
-import System.Directory (doesFileExist)
-import Test.Hspec
-import Text.Printf (printf)
+import           Control.Monad    (filterM)
+import           Data.Either      (isRight)
+import           Data.List        (isInfixOf, isPrefixOf)
+import           System.Directory (doesFileExist)
+import           Test.Hspec
+import           Text.Printf      (printf)
 
-import Board
-  ( Board (..)
-  , Cell (..)
-  , Dir (..)
-  , Exc (..)
-  , applyGravity
-  , gemCount
-  , isSolved
-  , renderBoard
-  )
-import Solve (parseCase, solve)
+import           Board            (Board (..), Cell (..), Dir (..), Exc (..),
+                                   applyGravity, gemCount, isSolved,
+                                   renderBoard)
+import           Solve            (parseCase, solve)
 
-import Image (Image, PixelRGB8 (..), convertRGB8, generateImage, pixelAt, readImage)
-import Image.Frame (resizeNearest)
-import Image.Zncc (bestZncc, zncc)
-import Vision.Board (parseBoard, prepareTemplates, validateParsedBoard)
-import Vision.Screen (findPlayButton)
+import           Image            (Image, PixelRGB8 (..), convertRGB8,
+                                   generateImage, pixelAt, readImage)
+import           Image.Frame      (resizeNearest)
+import           Image.Zncc       (bestZncc, zncc)
+import           Vision.Board     (parseBoard, prepareTemplates,
+                                   validateParsedBoard)
+import           Vision.Screen    (findPlayButton)
 
 #ifdef DARWIN
-import Mac.Mirror
-  ( Rect (..)
-  , parseGeometries
-  , parseGeometry
-  , selectPhoneWindow
-  , windowCenter
-  )
-import Mac.Gesture (cliclickArgs, imagePointToScreen, swipeTarget)
+import           Mac.Gesture      (cliclickArgs, imagePointToScreen,
+                                   swipeTarget)
+import           Mac.Mirror       (Rect (..), parseGeometries, parseGeometry,
+                                   selectPhoneWindow, windowCenter)
 #endif
 
 -- A non-flat RGB gradient image (non-zero variance, so ZNCC is well-defined).
@@ -63,13 +54,13 @@ invert (PixelRGB8 r g b) = PixelRGB8 (255 - r) (255 - g) (255 - b)
 
 -- | Board after a (possibly terminal) move outcome.
 boardOf :: Either (Exc Board) Board -> Board
-boardOf (Right b) = b
+boardOf (Right b)      = b
 boardOf (Left (Won b)) = b
-boardOf (Left Lost) = error "boardOf: Lost has no board"
+boardOf (Left Lost)    = error "boardOf: Lost has no board"
 
 isWon :: Either (Exc Board) Board -> Bool
 isWon (Left (Won _)) = True
-isWon _ = False
+isWon _              = False
 
 -- | Apply each direction in turn, recording every outcome. Stops at the first
 -- terminal (Won/Lost) outcome.
@@ -79,7 +70,7 @@ stepThrough b (d : ds) =
   let r = applyGravity d b
    in r : case r of
         Right b' -> stepThrough b' ds
-        _ -> []
+        _        -> []
 
 boardLines :: Board -> [String]
 boardLines = lines . renderBoard
@@ -105,11 +96,11 @@ parseOut h s = (initialGrid, go afterInitial)
       | otherwise = go rest
 
 dirFromWord :: String -> Dir
-dirFromWord "Up" = U
-dirFromWord "Down" = D
-dirFromWord "Left" = L
+dirFromWord "Up"    = U
+dirFromWord "Down"  = D
+dirFromWord "Left"  = L
 dirFromWord "Right" = R
-dirFromWord w = error ("dirFromWord: unexpected direction " ++ show w)
+dirFromWord w       = error ("dirFromWord: unexpected direction " ++ show w)
 
 -- | Drives a single reference case: physics must reproduce every recorded board,
 -- and the solver must match the optimal move count and win.
@@ -147,7 +138,7 @@ caseSpec name caseFile outFile = describe name $ do
 
   it "solver's own move sequence wins when replayed" $
     case solve board0 of
-      Nothing -> expectationFailure "solver found no solution"
+      Nothing   -> expectationFailure "solver found no solution"
       Just mine -> isWon (last (stepThrough board0 mine)) `shouldBe` True
 
 main :: IO ()
