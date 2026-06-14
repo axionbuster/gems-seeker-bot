@@ -4,15 +4,23 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Capture a global screen rectangle and allocate PNG bytes for the caller.
-int gsb_capture_png(
-    int32_t x,
-    int32_t y,
-    int32_t width,
-    int32_t height,
-    uint8_t **out_bytes,
-    size_t *out_length,
+// Capture one native window and allocate packed RGB pixels.
+int gsb_capture_rgb(
+    uint32_t window_id,
+    uint8_t **out_pixels,
+    int32_t *out_width,
+    int32_t *out_height,
     char **out_error);
+
+// List layer-zero on-screen windows as ID, x, y, width, height records.
+int gsb_list_windows(
+    const char *app_name,
+    int32_t **out_coordinates,
+    size_t *out_window_count,
+    char **out_error);
+
+// Bring the named running application and all of its windows forward.
+int gsb_focus_app(const char *app_name, char **out_error);
 
 // Post one primary-button click at an absolute screen point.
 int gsb_click(int32_t x, int32_t y, char **out_error);

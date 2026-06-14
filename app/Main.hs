@@ -14,22 +14,19 @@
 module Main (main) where
 
 import           Control.Concurrent (threadDelay)
-import           Control.Monad      (filterM, unless)
-import qualified Data.ByteString    as BS
 import           Data.Char          (isDigit, toLower)
-import           Data.Maybe         (isJust)
-import           System.Directory   (doesFileExist, findExecutable)
 import           System.Environment (getArgs, lookupEnv)
 import           System.Exit        (exitFailure)
 import           System.IO          (hPutStrLn, stderr)
 
 import           Board              (Board, Dir (..), boardFromLines,
                                      renderBoard)
-import           Image              (Image, PixelRGB8, convertRGB8, decodeImage,
-                                     imageHeight, imageWidth, readImage)
+import           Image              (Image, PixelRGB8, convertRGB8, imageHeight,
+                                     imageWidth, readImage, writePng)
 import           Mac.Gesture        (clickPoint, imagePointToScreen, replay,
                                      swipe)
-import           Mac.Mirror         (Rect, captureFrame, findWindow, focusApp)
+import           Mac.Mirror         (Window, captureFrame, findWindow, focusApp,
+                                     windowRect)
 import           Solve              (parseCase, solve)
 import           Vision.Board       (Templates, parseBoard, prepareTemplates)
 import           Vision.Screen      (findPlayButton)
@@ -80,32 +77,35 @@ runParse path = do
 
 runCapture :: FilePath -> IO ()
 runCapture out = do
-  probeSystemDependencies
   app <- appName
-  rect <- requireWindow
+  window <- requireWindow
   focusApp app -- bring the game forward so we grab it, not whatever is on top
   threadDelay 500000
-  png <- captureFrame rect
-  BS.writeFile out png
-  putStrLn ("captured " ++ show (BS.length png) ++ " bytes to " ++ out)
+  frame <- captureFrame window
+  writePng out frame
+  putStrLn $
+    "captured "
+      ++ show (imageWidth frame)
+      ++ "x"
+      ++ show (imageHeight frame)
+      ++ " RGB pixels to "
+      ++ out
 
 runSwipe :: String -> IO ()
 runSwipe dirText =
   case parseDir dirText of
     Nothing -> die ("unknown direction: " ++ dirText ++ " (use up|down|left|right)")
     Just dir -> do
-      probeSystemDependencies
       app <- appName
-      rect <- requireWindow
+      window <- requireWindow
       focusApp app
-      completed <- swipe rect dir
+      completed <- swipe (windowRect window) dir
       if completed
         then putStrLn ("swiped " ++ show dir)
         else putStrLn "stopped: pointer input interrupted swipe"
 
 runFull :: IO ()
 runFull = do
-  probeSystemDependencies
   app <- appName
   templates <- loadTemplates
   playTemplate <- loadRGB8 "assets/templates/play.png"
@@ -114,52 +114,48 @@ runFull = do
 
 loop :: String -> Templates -> Image PixelRGB8 -> Int -> Int -> IO ()
 loop app templates playTemplate consecutivePlayClicks transientRetries = do
-  rect <- requireWindow
-  png <- captureFrame rect
-  BS.writeFile "frame.png" png
-  case decodeImage png of
-    Left err -> die ("decode failed: " ++ err)
-    Right dynamic -> do
-      let frame = convertRGB8 dynamic
-      case findPlayButton playTemplate frame of
-        Just imagePoint
-          | consecutivePlayClicks < 3 -> do
-              let screenPoint =
-                    imagePointToScreen
-                      rect
-                      (imageWidth frame, imageHeight frame)
-                      imagePoint
-              putStrLn ("PLAY detected; clicking " ++ show screenPoint)
-              focusApp app
-              clickPoint screenPoint
+  window <- requireWindow
+  let rect = windowRect window
+  frame <- captureFrame window
+  case findPlayButton playTemplate frame of
+    Just imagePoint
+      | consecutivePlayClicks < 3 -> do
+          let screenPoint =
+                imagePointToScreen
+                  rect
+                  (imageWidth frame, imageHeight frame)
+                  imagePoint
+          putStrLn ("PLAY detected; clicking " ++ show screenPoint)
+          focusApp app
+          clickPoint screenPoint
+          threadDelay 500000
+          loop app templates playTemplate (consecutivePlayClicks + 1) 0
+      | otherwise ->
+          putStrLn "stopped: PLAY remained visible after 3 click attempts"
+    Nothing ->
+      case parseBoard templates [frame] of
+        Left err
+          | transientRetries < 10 -> do
               threadDelay 500000
-              loop app templates playTemplate (consecutivePlayClicks + 1) 0
+              loop app templates playTemplate consecutivePlayClicks (transientRetries + 1)
           | otherwise ->
-              putStrLn "stopped: PLAY remained visible after 3 click attempts"
-        Nothing ->
-          case parseBoard templates [frame] of
-            Left err
-              | transientRetries < 10 -> do
+              putStrLn ("stopped: no PLAY button and parse failed: " ++ err)
+        Right board -> do
+          putStrLn "parsed board:"
+          putStrLn (renderBoard board)
+          case solve board of
+            Nothing -> putStrLn "stopped: no solution found"
+            Just moves -> do
+              putStrLn (show (length moves) ++ " moves: " ++ unwords (map show moves))
+              focusApp app
+              completed <- replay rect moves
+              if completed
+                then do
+                  putStrLn "done"
                   threadDelay 500000
-                  loop app templates playTemplate consecutivePlayClicks (transientRetries + 1)
-              | otherwise ->
-                  putStrLn ("stopped: no PLAY button and parse failed: " ++ err)
-            Right board -> do
-              putStrLn "parsed board:"
-              putStrLn (renderBoard board)
-              case solve board of
-                Nothing -> putStrLn "stopped: no solution found"
-                Just moves -> do
-                  putStrLn (show (length moves) ++ " moves: " ++ unwords (map show moves))
-                  focusApp app
-                  completed <- replay rect moves
-                  if completed
-                    then do
-                      putStrLn "done"
-                      threadDelay 500000
-                      loop app templates playTemplate 0 0
-                    else
-                      putStrLn "stopped: pointer input interrupted replay"
+                  loop app templates playTemplate 0 0
+                else
+                  putStrLn "stopped: pointer input interrupted replay"
 
 -- helpers --------------------------------------------------------------------
 
@@ -196,7 +192,7 @@ loadRGB8 path =
     Left err -> die (path ++ ": " ++ err)
     Right dynamic -> pure (convertRGB8 dynamic)
 
-requireWindow :: IO Rect
+requireWindow :: IO Window
 requireWindow = do
   app <- appName
   findWindow app >>= \case
@@ -205,45 +201,11 @@ requireWindow = do
       die $
         unlines
           [ "could not read the '" ++ app ++ "' window."
-          , "  - Is the app open and showing the game?"
-          , "  - Grant this terminal Accessibility permission in"
-          , "    System Settings > Privacy & Security > Accessibility."
+          , "  - Is the app open with its phone window visible on screen?"
           ]
 
 appName :: IO String
 appName = maybe "iPhone Mirroring" id <$> lookupEnv "GSB_APP"
-
-data SystemDependency = SystemDependency
-  { dependencyName  :: String
-  , dependencyHint  :: String
-  , dependencyCheck :: IO Bool
-  }
-
-probeSystemDependencies :: IO ()
-probeSystemDependencies = do
-  missing <- filterM (fmap not . dependencyCheck) systemDependencies
-  unless (null missing) $
-    die $
-      unlines
-        ("missing system dependencies:" : map formatDependency missing)
-  where
-    formatDependency dep =
-      "  - " ++ dependencyName dep ++ " (" ++ dependencyHint dep ++ ")"
-
-systemDependencies :: [SystemDependency]
-systemDependencies =
-  [ SystemDependency
-      { dependencyName = "osascript"
-      , dependencyHint = "ships with macOS"
-      , dependencyCheck = binaryAvailable "osascript" ["/usr/bin/osascript"]
-      }
-  ]
-
-binaryAvailable :: String -> [FilePath] -> IO Bool
-binaryAvailable name fallbackPaths = do
-  inPath <- isJust <$> findExecutable name
-  inFallback <- or <$> mapM doesFileExist fallbackPaths
-  pure (inPath || inFallback)
 
 parseDir :: String -> Maybe Dir
 parseDir s = case map toLower s of

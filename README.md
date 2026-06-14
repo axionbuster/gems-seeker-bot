@@ -8,7 +8,9 @@ It captures the game window, reads the board from a few frames, solves the level
 
 ## What it does
 
-- Captures the mirrored phone window through ScreenCaptureKit.
+- Locates and activates the mirrored phone window with native macOS APIs.
+- Captures the window through a ScreenCaptureKit window filter directly as RGB
+  pixels, with stable black pixels outside its rounded corners.
 - Parses the board from 1 to 3 good frames.
 - Solves the full board before it starts replaying moves.
 - Replays gravity moves with native Core Graphics events.
@@ -40,7 +42,7 @@ cabal run gems-seeker-bot -- swipe left
 
 ## How It Works
 
-1. The app captures the active iPhone Mirroring window.
+1. The app locates, activates, and captures the iPhone Mirroring window.
 2. Vision code classifies the board from a handful of frames.
 3. Search code computes the full solution.
 4. The macOS gesture layer replays the moves.

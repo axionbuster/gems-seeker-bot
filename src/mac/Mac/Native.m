@@ -1,13 +1,22 @@
 #import "Native.h"
 
+#import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <Foundation/Foundation.h>
-#import <ImageIO/ImageIO.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/*
+ * Table of contents
+ * 1. Shared errors and permissions
+ * 2. Raw ScreenCaptureKit frames
+ * 3. Native application windows
+ * 4. Core Graphics pointer events
+ */
 
 static const useconds_t dragLeadInUs = 500000;
 static const useconds_t eventDelayUs = 20000;
@@ -21,6 +30,8 @@ typedef struct {
   BOOL interrupted;
   CFMachPortRef eventTap;
 } PointerMonitor;
+
+// 1. Shared errors and permissions -------------------------------------------
 
 static void setError(char **outError, NSString *message) {
   if (outError == NULL) {
@@ -168,24 +179,93 @@ static void releasePrimaryButtonAtCurrentLocation(void) {
       NULL);
 }
 
-int gsb_capture_png(
-    int32_t x,
-    int32_t y,
-    int32_t width,
-    int32_t height,
-    uint8_t **outBytes,
-    size_t *outLength,
+// 2. Raw ScreenCaptureKit frames ---------------------------------------------
+
+static uint8_t *copyRgbPixels(
+    CGImageRef image,
+    int32_t *outWidth,
+    int32_t *outHeight,
+    char **outError) {
+  size_t width = CGImageGetWidth(image);
+  size_t height = CGImageGetHeight(image);
+  if (width == 0 || height == 0 || width > INT32_MAX || height > INT32_MAX
+      || width > SIZE_MAX / 4
+      || height > SIZE_MAX / (width * 4)
+      || width > SIZE_MAX / 3
+      || height > SIZE_MAX / (width * 3)) {
+    setError(outError, @"ScreenCaptureKit returned invalid image dimensions.");
+    return NULL;
+  }
+
+  size_t rgbaLength = width * height * 4;
+  uint8_t *rgba = calloc(rgbaLength, 1);
+  if (rgba == NULL) {
+    setError(outError, @"Could not allocate the captured RGBA buffer.");
+    return NULL;
+  }
+
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+  if (colorSpace == NULL) {
+    free(rgba);
+    setError(outError, @"Core Graphics could not create an RGB color space.");
+    return NULL;
+  }
+  CGContextRef context = CGBitmapContextCreate(
+      rgba,
+      width,
+      height,
+      8,
+      width * 4,
+      colorSpace,
+      kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(colorSpace);
+  if (context == NULL) {
+    free(rgba);
+    setError(outError, @"Core Graphics could not create an RGB bitmap.");
+    return NULL;
+  }
+
+  CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+  CGContextRelease(context);
+
+  size_t rgbLength = width * height * 3;
+  uint8_t *rgb = malloc(rgbLength);
+  if (rgb == NULL) {
+    free(rgba);
+    setError(outError, @"Could not allocate the captured RGB buffer.");
+    return NULL;
+  }
+  for (size_t source = 0, target = 0; target < rgbLength;
+       source += 4, target += 3) {
+    rgb[target] = rgba[source];
+    rgb[target + 1] = rgba[source + 1];
+    rgb[target + 2] = rgba[source + 2];
+  }
+  free(rgba);
+
+  *outWidth = (int32_t)width;
+  *outHeight = (int32_t)height;
+  return rgb;
+}
+
+int gsb_capture_rgb(
+    uint32_t windowID,
+    uint8_t **outPixels,
+    int32_t *outWidth,
+    int32_t *outHeight,
     char **outError) {
   @autoreleasepool {
     if (outError != NULL) {
       *outError = NULL;
     }
-    if (outBytes == NULL || outLength == NULL || width <= 0 || height <= 0) {
-      setError(outError, @"Screen capture received an invalid rectangle.");
+    if (windowID == 0 || outPixels == NULL || outWidth == NULL
+        || outHeight == NULL) {
+      setError(outError, @"Screen capture received an invalid window.");
       return 1;
     }
-    *outBytes = NULL;
-    *outLength = 0;
+    *outPixels = NULL;
+    *outWidth = 0;
+    *outHeight = 0;
 
     if (!CGPreflightScreenCaptureAccess()
         && !CGRequestScreenCaptureAccess()) {
@@ -197,23 +277,61 @@ int gsb_capture_png(
     }
 
     if (@available(macOS 15.2, *)) {
-      // ScreenCaptureKit is asynchronous. The C ABI stays synchronous so
-      // Haskell receives one owned byte buffer or one owned error string.
+      // Resolve the CGWindowID to ScreenCaptureKit's window object, then use
+      // an independent-window filter so transparent corners do not sample the
+      // desktop behind the rounded iPhone Mirroring window.
       dispatch_semaphore_t finished = dispatch_semaphore_create(0);
       __block CGImageRef capturedImage = NULL;
       __block NSString *captureError = nil;
-      CGRect rect = CGRectMake(x, y, width, height);
+      [SCShareableContent
+          getShareableContentExcludingDesktopWindows:YES
+          onScreenWindowsOnly:YES
+          completionHandler:^(
+              SCShareableContent *content,
+              NSError *contentError) {
+            SCWindow *target = nil;
+            for (SCWindow *window in content.windows) {
+              if (window.windowID == windowID) {
+                target = window;
+                break;
+              }
+            }
+            if (target == nil) {
+              captureError =
+                  contentError == nil
+                      ? @"ScreenCaptureKit could not find the selected window."
+                      : [contentError.localizedDescription copy];
+              dispatch_semaphore_signal(finished);
+              return;
+            }
 
-      [SCScreenshotManager
-          captureImageInRect:rect
-          completionHandler:^(CGImageRef image, NSError *error) {
-            if (image != NULL) {
-              capturedImage = CGImageRetain(image);
-            }
-            if (error != nil) {
-              captureError = [error.localizedDescription copy];
-            }
-            dispatch_semaphore_signal(finished);
+            SCContentFilter *filter = [[SCContentFilter alloc]
+                initWithDesktopIndependentWindow:target];
+            SCShareableContentInfo *info =
+                [SCShareableContent infoForFilter:filter];
+            SCStreamConfiguration *configuration =
+                [[SCStreamConfiguration alloc] init];
+            configuration.width = (size_t)llround(
+                target.frame.size.width * info.pointPixelScale);
+            configuration.height = (size_t)llround(
+                target.frame.size.height * info.pointPixelScale);
+            configuration.showsCursor = NO;
+            configuration.ignoreShadowsSingleWindow = YES;
+            configuration.backgroundColor =
+                CGColorGetConstantColor(kCGColorBlack);
+
+            [SCScreenshotManager
+                captureImageWithFilter:filter
+                configuration:configuration
+                completionHandler:^(CGImageRef image, NSError *error) {
+                  if (image != NULL) {
+                    capturedImage = CGImageRetain(image);
+                  }
+                  if (error != nil) {
+                    captureError = [error.localizedDescription copy];
+                  }
+                  dispatch_semaphore_signal(finished);
+                }];
           }];
       dispatch_semaphore_wait(finished, DISPATCH_TIME_FOREVER);
 
@@ -225,39 +343,17 @@ int gsb_capture_png(
         return 1;
       }
 
-      NSMutableData *png = [NSMutableData data];
-      CGImageDestinationRef destination = CGImageDestinationCreateWithData(
-          (__bridge CFMutableDataRef)png,
-          CFSTR("public.png"),
-          1,
-          NULL);
-      if (destination == NULL) {
-        CGImageRelease(capturedImage);
-        setError(outError, @"ImageIO could not create a PNG encoder.");
-        return 1;
-      }
-
-      CGImageDestinationAddImage(destination, capturedImage, NULL);
-      BOOL encoded = CGImageDestinationFinalize(destination);
-      CFRelease(destination);
+      uint8_t *pixels = copyRgbPixels(
+          capturedImage,
+          outWidth,
+          outHeight,
+          outError);
       CGImageRelease(capturedImage);
-      if (!encoded) {
-        setError(outError, @"ImageIO could not encode the captured frame.");
-        return 1;
-      }
-      if (png.length == 0) {
-        setError(outError, @"ImageIO encoded an empty captured frame.");
+      if (pixels == NULL) {
         return 1;
       }
 
-      uint8_t *bytes = malloc(png.length);
-      if (bytes == NULL) {
-        setError(outError, @"Could not allocate memory for the captured PNG.");
-        return 1;
-      }
-      memcpy(bytes, png.bytes, png.length);
-      *outBytes = bytes;
-      *outLength = png.length;
+      *outPixels = pixels;
       return 0;
     }
 
@@ -265,6 +361,124 @@ int gsb_capture_png(
     return 1;
   }
 }
+
+// 3. Native application windows ---------------------------------------------
+
+int gsb_list_windows(
+    const char *appName,
+    int32_t **outCoordinates,
+    size_t *outWindowCount,
+    char **outError) {
+  @autoreleasepool {
+    if (outError != NULL) {
+      *outError = NULL;
+    }
+    if (appName == NULL || outCoordinates == NULL || outWindowCount == NULL) {
+      setError(outError, @"Window lookup received invalid arguments.");
+      return 1;
+    }
+    *outCoordinates = NULL;
+    *outWindowCount = 0;
+
+    NSString *owner = [[NSString alloc] initWithUTF8String:appName];
+    if (owner == nil) {
+      setError(outError, @"Application name is not valid UTF-8.");
+      return 1;
+    }
+
+    CFArrayRef windowInfo = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly
+            | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID);
+    if (windowInfo == NULL) {
+      setError(outError, @"Core Graphics could not list on-screen windows.");
+      return 1;
+    }
+    NSArray<NSDictionary *> *windows = CFBridgingRelease(windowInfo);
+    if (windows.count > SIZE_MAX / (5 * sizeof(int32_t))) {
+      setError(outError, @"Core Graphics returned too many windows.");
+      return 1;
+    }
+
+    int32_t *coordinates = calloc(
+        windows.count * 5,
+        sizeof(int32_t));
+    if (coordinates == NULL && windows.count > 0) {
+      setError(outError, @"Could not allocate the window geometry buffer.");
+      return 1;
+    }
+
+    size_t count = 0;
+    for (NSDictionary *window in windows) {
+      NSString *windowOwner = window[(__bridge NSString *)kCGWindowOwnerName];
+      NSNumber *layer = window[(__bridge NSString *)kCGWindowLayer];
+      NSNumber *windowID = window[(__bridge NSString *)kCGWindowNumber];
+      NSDictionary *bounds =
+          window[(__bridge NSString *)kCGWindowBounds];
+      CGRect rect = CGRectZero;
+      if (![windowOwner isEqualToString:owner]
+          || layer.integerValue != 0
+          || windowID == nil
+          || bounds == nil
+          || !CGRectMakeWithDictionaryRepresentation(
+              (__bridge CFDictionaryRef)bounds,
+              &rect)) {
+        continue;
+      }
+
+      size_t offset = count * 5;
+      coordinates[offset] = windowID.intValue;
+      coordinates[offset + 1] = (int32_t)llround(rect.origin.x);
+      coordinates[offset + 2] = (int32_t)llround(rect.origin.y);
+      coordinates[offset + 3] = (int32_t)llround(rect.size.width);
+      coordinates[offset + 4] = (int32_t)llround(rect.size.height);
+      count += 1;
+    }
+
+    if (count == 0) {
+      free(coordinates);
+      return 0;
+    }
+    *outCoordinates = coordinates;
+    *outWindowCount = count;
+    return 0;
+  }
+}
+
+int gsb_focus_app(const char *appName, char **outError) {
+  @autoreleasepool {
+    if (outError != NULL) {
+      *outError = NULL;
+    }
+    if (appName == NULL) {
+      setError(outError, @"Application activation received no name.");
+      return 1;
+    }
+
+    NSString *name = [[NSString alloc] initWithUTF8String:appName];
+    if (name == nil) {
+      setError(outError, @"Application name is not valid UTF-8.");
+      return 1;
+    }
+    for (NSRunningApplication *application
+         in NSWorkspace.sharedWorkspace.runningApplications) {
+      if ([application.localizedName isEqualToString:name]) {
+        if ([application activateWithOptions:NSApplicationActivateAllWindows]) {
+          return 0;
+        }
+        setError(outError, @"macOS could not activate the application.");
+        return 1;
+      }
+    }
+
+    setError(
+        outError,
+        [NSString stringWithFormat:@"The '%@' application is not running.", name]);
+    return 1;
+  }
+}
+
+// 4. Core Graphics pointer events --------------------------------------------
 
 int gsb_click(int32_t x, int32_t y, char **outError) {
   @autoreleasepool {

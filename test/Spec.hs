@@ -23,8 +23,7 @@ import           Vision.Screen    (findPlayButton)
 
 #ifdef DARWIN
 import           Mac.Gesture      (imagePointToScreen, swipePath, swipeTarget)
-import           Mac.Mirror       (Rect (..), parseGeometries, parseGeometry,
-                                   selectPhoneWindow, windowCenter)
+import           Mac.Mirror       (Rect (..), selectPhoneWindow, windowCenter)
 #endif
 
 -- A non-flat RGB gradient image (non-zero variance, so ZNCC is well-defined).
@@ -197,18 +196,7 @@ main = hspec $ do
       bestZncc t s 3 (2, 3) `shouldSatisfy` near 1
 
 #ifdef DARWIN
-  describe "Mac.Mirror.parseGeometry" $ do
-    it "parses integer geometry" $
-      parseGeometry "100,200,300,400\n" `shouldBe` Just (Rect 100 200 300 400)
-    it "tolerates decimal geometry" $
-      parseGeometry " 100.0 , 200.0 , 300.0 , 400.0 " `shouldBe` Just (Rect 100 200 300 400)
-    it "rejects malformed geometry" $
-      parseGeometry "not,a,rect" `shouldBe` Nothing
-
-    it "parses every valid window geometry" $
-      parseGeometries "23,39,66,20\n17,30,348,766\nbad\n"
-        `shouldBe` [Rect 23 39 66 20, Rect 17 30 348 766]
-
+  describe "Mac.Mirror.selectPhoneWindow" $ do
     it "selects the phone window after a tiny guard dialog" $
       selectPhoneWindow [Rect 23 39 66 20, Rect 17 30 348 766]
         `shouldBe` Just (Rect 17 30 348 766)

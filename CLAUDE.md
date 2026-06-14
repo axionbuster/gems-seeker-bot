@@ -46,6 +46,6 @@ Working notes for Codex in this repository.
 ## Notes
 
 - `app/Main.hs` exposes `solve`, `parse`, `capture`, `swipe`, and `run` subcommands.
-- Screen capture and pointer gestures use the Objective-C bridge in `src/mac/Mac/Native.m`.
-- The startup probe checks that `osascript` is available before capture, swipe, or run mode starts.
+- Window discovery, application activation, raw RGB capture, and pointer
+  gestures use the Objective-C bridge in `src/mac/Mac/Native.m`.
 - If you add new documentation, make it self-contained and keep the prose aligned with the current code.
