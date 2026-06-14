@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.2.0.0 - 2026-06-14
+
 - Added a native macOS Objective-C bridge that performs ScreenCaptureKit capture
   and Core Graphics gestures inside the executable.
 - Reduced each swipe to a short linear event path with enough time for iPhone
