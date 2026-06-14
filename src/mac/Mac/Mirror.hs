@@ -1,10 +1,8 @@
 -- | macOS control of the mirroring app: locate its window, grab a region of the
--- screen, and (via "Mac.Gesture") swipe it. Everything is in screen *points* —
--- @osascript@ geometry, @screencapture -R@, and @cliclick@ all agree — so there
--- is no retina/DPI conversion to do.
+-- screen, and (via "Mac.Gesture") swipe it. Everything is in screen *points*,
+-- so there is no retina/DPI conversion to do.
 --
--- Ported from @references/experiments@ (@src/mac/Mac/Mirror.hs@), an approach
--- already proven to drive the live game. IO goes through @unliftio@.
+-- IO goes through @unliftio@.
 module Mac.Mirror
   ( Rect (..)
   , windowCenter

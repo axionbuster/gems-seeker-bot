@@ -1,8 +1,7 @@
 -- | Frame conversion helpers.
 --
--- Ported from @references/experiments@ (@src/image/Image/Frame.hs@). MJPEG
--- streaming itself is out of scope (see CLAUDE.md), but PNG decode + JPEG
--- re-encode is handy for dumping debug frames, so the small surface is kept.
+-- PNG decode plus JPEG re-encode is handy for dumping debug frames, so the
+-- small surface is kept even though the app does not stream MJPEG.
 module Image.Frame
   ( pngToJpeg
   , placeholderJpeg

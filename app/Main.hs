@@ -14,8 +14,11 @@
 module Main (main) where
 
 import           Control.Concurrent (threadDelay)
+import           Control.Monad      (filterM, unless)
 import qualified Data.ByteString    as BS
 import           Data.Char          (isDigit, toLower)
+import           Data.Maybe         (isJust)
+import           System.Directory   (doesFileExist, findExecutable)
 import           System.Environment (getArgs, lookupEnv)
 import           System.Exit        (exitFailure)
 import           System.IO          (hPutStrLn, stderr)
@@ -77,6 +80,7 @@ runParse path = do
 
 runCapture :: FilePath -> IO ()
 runCapture out = do
+  probeSystemDependencies
   app <- appName
   rect <- requireWindow
   focusApp app -- bring the game forward so we grab it, not whatever is on top
@@ -90,6 +94,7 @@ runSwipe dirText =
   case parseDir dirText of
     Nothing -> die ("unknown direction: " ++ dirText ++ " (use up|down|left|right)")
     Just dir -> do
+      probeSystemDependencies
       app <- appName
       rect <- requireWindow
       focusApp app
@@ -98,6 +103,7 @@ runSwipe dirText =
 
 runFull :: IO ()
 runFull = do
+  probeSystemDependencies
   app <- appName
   templates <- loadTemplates
   playTemplate <- loadRGB8 "assets/templates/play.png"
@@ -158,8 +164,8 @@ reportSolution board =
     Just moves ->
       putStrLn (show (length moves) ++ " moves: " ++ unwords (map show moves))
 
--- | Read a board file: the reference case format (@count@, @"W H"@, grid) when
--- it looks like one, otherwise a bare glyph grid.
+-- | Read a board file: the case-file format (@count@, @"W H"@, grid) when it
+-- looks like one, otherwise a bare glyph grid.
 readBoardFile :: FilePath -> IO Board
 readBoardFile path = do
   contents <- readFile path
@@ -200,6 +206,48 @@ requireWindow = do
 
 appName :: IO String
 appName = maybe "iPhone Mirroring" id <$> lookupEnv "GSB_APP"
+
+data SystemDependency = SystemDependency
+  { dependencyName :: String
+  , dependencyHint :: String
+  , dependencyCheck :: IO Bool
+  }
+
+probeSystemDependencies :: IO ()
+probeSystemDependencies = do
+  missing <- filterM (fmap not . dependencyCheck) systemDependencies
+  unless (null missing) $
+    die $
+      unlines
+        ("missing system dependencies:" : map formatDependency missing)
+  where
+    formatDependency dep =
+      "  - " ++ dependencyName dep ++ " (" ++ dependencyHint dep ++ ")"
+
+systemDependencies :: [SystemDependency]
+systemDependencies =
+  [ SystemDependency
+      { dependencyName = "screencapture"
+      , dependencyHint = "ships with macOS"
+      , dependencyCheck = binaryAvailable "screencapture" ["/usr/sbin/screencapture"]
+      }
+  , SystemDependency
+      { dependencyName = "osascript"
+      , dependencyHint = "ships with macOS"
+      , dependencyCheck = binaryAvailable "osascript" ["/usr/bin/osascript"]
+      }
+  , SystemDependency
+      { dependencyName = "cliclick"
+      , dependencyHint = "install with `brew install cliclick`"
+      , dependencyCheck = binaryAvailable "cliclick" ["/opt/homebrew/bin/cliclick", "/usr/local/bin/cliclick"]
+      }
+  ]
+
+binaryAvailable :: String -> [FilePath] -> IO Bool
+binaryAvailable name fallbackPaths = do
+  inPath <- isJust <$> findExecutable name
+  inFallback <- or <$> mapM doesFileExist fallbackPaths
+  pure (inPath || inFallback)
 
 parseDir :: String -> Maybe Dir
 parseDir s = case map toLower s of

@@ -1,10 +1,7 @@
 -- | Replay solver moves as macOS swipe gestures.
 --
--- Ported from @references/experiments@ (@src/mac/Mac/Mirror.hs@, @scroll@), an
--- approach already proven to drive the live game. Each swipe is an absolute
--- @cliclick@ drag from the window centre ~100px in the move's direction, so no
--- human cursor placement is needed; the drag shape and timing match the
--- known-good reference values.
+-- Each swipe is an absolute @cliclick@ drag from the window centre about 100px
+-- in the move's direction, so no human cursor placement is needed.
 module Mac.Gesture
   ( swipe
   , swipeTarget

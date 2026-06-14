@@ -7,7 +7,6 @@ import           Data.Either      (isRight)
 import           Data.List        (isInfixOf, isPrefixOf)
 import           System.Directory (doesFileExist)
 import           Test.Hspec
-import           Text.Printf      (printf)
 
 import           Board            (Board (..), Cell (..), Dir (..), Exc (..),
                                    applyGravity, gemCount, isSolved,
@@ -75,7 +74,7 @@ stepThrough b (d : ds) =
 boardLines :: Board -> [String]
 boardLines = lines . renderBoard
 
--- | The reference output format: an "Initial state:" grid followed by a series
+-- | The sample output format: an "Initial state:" grid followed by a series
 -- of "Step k: Apply gravity DIR" blocks, each with its resulting grid. Returns
 -- the initial grid and the list of (direction, resulting-grid) steps.
 parseOut :: Int -> String -> ([String], [(Dir, [String])])
@@ -102,7 +101,7 @@ dirFromWord "Left"  = L
 dirFromWord "Right" = R
 dirFromWord w       = error ("dirFromWord: unexpected direction " ++ show w)
 
--- | Drives a single reference case: physics must reproduce every recorded board,
+-- | Drives a single sample case: physics must reproduce every recorded board,
 -- and the solver must match the optimal move count and win.
 caseSpec :: String -> FilePath -> FilePath -> Spec
 caseSpec name caseFile outFile = describe name $ do
@@ -113,15 +112,14 @@ caseSpec name caseFile outFile = describe name $ do
       refGrids = map snd steps
       results = stepThrough board0 refDirs
 
-  it "parses the initial board to match the reference render" $
+  it "parses the initial board to match the sample render" $
     boardLines board0 `shouldBe` initialGrid
 
   it "physics reproduces every recorded board up to the winning move" $ do
-    -- Every non-terminal move is an ongoing game and must match the reference
-    -- board cell-for-cell. We do NOT pin the board at the instant of winning:
-    -- like the reference's @moveGame@, our sweep aborts the moment the last gem
-    -- lands, so a not-yet-settled bat's resting spot there is implementation-
-    -- defined (and irrelevant — the game is already over).
+    -- Every non-terminal move is an ongoing game and must match the board
+    -- cell-for-cell. We do not pin the board at the instant of winning: the
+    -- sweep aborts the moment the last gem lands, so a not-yet-settled bat's
+    -- resting spot there is implementation-defined.
     length results `shouldBe` length steps
     let nonFinal = init results
     all isRight nonFinal `shouldBe` True
@@ -238,21 +236,21 @@ main = hspec $ do
         `shouldBe` (191, 711)
 #endif
 
-  -- CV oracle: the reference Experiment2 classifies every one of its 61 frames
-  -- to the same board; our port must reproduce that consensus from a few of
-  -- them. Skips cleanly if the submodule frames / fixture are not present.
-  describe "Vision.Board.parseBoard (golden: experiments/1 frames)" $ do
+  -- CV oracle: the bundled frame set should classify to the same board from a
+  -- few of them. Skips cleanly if the local frames or fixture are not present.
+  describe "Vision.Board.parseBoard (golden: scene1 frames)" $ do
     let gemPath = "assets/templates/gem.png"
         batPath = "assets/templates/bat.png"
         framePaths =
-          [ printf "references/experiments/1/frames_%04d.png" (n :: Int)
-          | n <- [1, 2, 3]
+          [ "test/fixtures/frames/scene1-1.png"
+          , "test/fixtures/frames/scene1-2.png"
+          , "test/fixtures/frames/scene1-3.png"
           ]
         fixturePath = "test/fixtures/frames/scene1.board"
         required = gemPath : batPath : fixturePath : framePaths
     missing <- runIO (filterM (fmap not . doesFileExist) required)
     if not (null missing)
-      then it "reproduces the reference consensus board" $
+      then it "reproduces the consensus board" $
         pendingWith ("missing fixtures: " ++ show missing)
       else do
         result <- runIO $ do
@@ -261,7 +259,7 @@ main = hspec $ do
           frames <- mapM loadRGB8 framePaths
           pure (parseBoard (prepareTemplates gemT batT) frames)
         expected <- runIO (readFile fixturePath)
-        it "reproduces the reference consensus board" $
+        it "reproduces the consensus board" $
           fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
   describe "Vision.Board.parseBoard (live iPhone Mirroring capture)" $ do
@@ -400,9 +398,9 @@ main = hspec $ do
           playResult `shouldBe` (Just (348, 1362), Nothing, Just (173, 681))
 
   caseSpec "case0 (no bats, 6x8)"
-    "references/pure-solver/case0.txt"
-    "references/pure-solver/case0_out0.txt"
+    "test/fixtures/cases/case0.txt"
+    "test/fixtures/cases/case0.out"
 
   caseSpec "case1 (with bats, 5x5)"
-    "references/pure-solver/case1.txt"
-    "references/pure-solver/case1_out0.txt"
+    "test/fixtures/cases/case1.txt"
+    "test/fixtures/cases/case1.out"

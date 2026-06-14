@@ -1,22 +1,8 @@
 -- | Board state and gravity physics.
 --
--- Ported from @references/pure-solver@ (@src/TotM2.hs@). The reference uses a
--- bit-packed @Word@ array (2 bits/cell) for speed; here we keep a plain
--- row-major @[Cell]@ in the public type (correctness-first, matches the search
--- state) and thaw into a boxed @STArray@ only inside 'applyGravity'. The slide
--- algorithm itself is a faithful port: a single recursive @go@ (the reference's
--- @go0@ and its blocker-push @chain ... there@ are the same closure), with
--- 'Won'\/'Lost' thrown mid-sweep via 'ExceptT'.
---
--- The player slot (glyph @*@) is modelled as a 'Player' cell sitting at the
--- target location — the reference tracks it as a separate coordinate whose cell
--- is air. A movable piece whose next cell is the player is consumed there: a gem
--- is collected (removed), a bat loses. The player cell is never moved or
--- overwritten, so it behaves exactly like the reference's air sink.
---
--- Carrying the packed representation over is a documented optimisation for later
--- (see references/pure-solver docs/INTERNING_PLAN.md); per-state hashing of the
--- cell list is the known cost. Correctness and tests come first.
+-- The public board stays row-major and easy to inspect; the hot path only
+-- thaws into an ST array while a gravity sweep runs. Gems collect on the player
+-- cell, bats lose, and the player cell itself never moves or gets overwritten.
 module Board
   ( Cell (..)
   , Dir (..)
@@ -116,9 +102,8 @@ applyGravity dir b0
       let freezeBoard = do
             a <- freeze arr :: ST s (Array (Int, Int) Cell)
             pure (Board w h (elems a))
-          -- Slide the piece at @pos@ as far as it goes. Mirrors TotM2's @go0@;
-          -- the reference's blocker push @chain ... there@ is this same call on
-          -- @there@, so one recursive function covers both.
+          -- Slide the piece at @pos@ as far as it goes. One recursive function
+          -- handles both the active piece and any blocker it pushes ahead.
           go :: (Int, Int) -> ExceptT (Exc ()) (ST s) ()
           go pos = when (inb pos) $ do
             this <- lift (readArray arr pos)

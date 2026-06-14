@@ -1,7 +1,6 @@
 -- | Recover a 'Board' from one or more captured frames.
 --
--- Ported from @references/experiments@ (@app/Experiment2.hs@), restyled and
--- trimmed to the classification pipeline the bot actually needs:
+-- The parser keeps only the classification pipeline the bot actually needs:
 --
 --   1. 'estimateGrid' — locate the two yellow HUD controls in the top half, and from
 --      their separation derive the grid pitch and origin (a fixed affine of that
@@ -16,10 +15,10 @@
 --   5. 'consensusMap' — majority-vote across frames.
 --   6. 'validateParsedBoard' — reject maps that cannot represent a playable scene.
 --
--- Calibration is frozen ('calibratedThresholds', from the same 61-frame run that
--- produced @calibration.txt@); we do not re-derive thresholds at runtime. The
--- reference's reporting, rendering, and runtime-calibration code is dropped, as
--- are the unused per-cell RGB matches.
+-- Calibration is frozen ('calibratedThresholds', measured from the bundled
+-- calibration run); thresholds are not re-derived at runtime. The reporting,
+-- rendering, and runtime-calibration code from the exploratory prototype is
+-- omitted, as are the unused per-cell RGB matches.
 --
 -- Geometry and classification are pure; the only IO (loading templates and PNG
 -- frames) lives in the caller.
@@ -51,7 +50,7 @@ import           Image.Frame         (resizeNearest)
 import           Image.Zncc          (zncc)
 
 -- | Per-cell classification thresholds, measured and frozen from the calibration
--- run in references/experiments (@calibration.txt@). Constants now.
+-- run. Constants now.
 data Thresholds = Thresholds
   { gemLumaThreshold           :: {-# UNPACK #-} !Double
   , gemMaskThreshold           :: {-# UNPACK #-} !Double
@@ -64,7 +63,7 @@ data Thresholds = Thresholds
   }
   deriving (Eq, Show)
 
--- | The frozen calibration from references/experiments/calibration.txt.
+-- | The frozen calibration from the recorded calibration run.
 calibratedThresholds :: Thresholds
 calibratedThresholds =
   Thresholds
@@ -239,9 +238,9 @@ gridRectHeight GridRect {minCellY, maxCellY} = maxCellY - minCellY + 1
 estimateGrid :: Image PixelRGB8 -> Either String Grid
 estimateGrid image =
   case widestPair of
-    Nothing -> Left "estimateGrid: grid reference clusters are missing"
+    Nothing -> Left "estimateGrid: grid clusters are missing"
     Just (firstCenter, secondCenter)
-      | distance <= 0 -> Left "estimateGrid: grid reference clusters in invalid order"
+      | distance <= 0 -> Left "estimateGrid: grid clusters are in invalid order"
       | otherwise -> Right (Grid {gridPitch = pitch, gridOrigin = origin})
       where
         distance = realPart secondCenter - realPart firstCenter
@@ -620,7 +619,7 @@ winningCell votes = snd (foldl1 max (voteCounts votes))
 -- generic helpers -----------------------------------------------------------
 
 -- | The element maximising a key; 'Nothing' for an empty list. Ties keep the
--- earlier element (matching the reference's strict left fold).
+-- earlier element from the left fold.
 maximumBy :: Ord weight => (a -> weight) -> [a] -> Maybe a
 maximumBy _ [] = Nothing
 maximumBy weight (first : rest) = Just (foldl' choose first rest)

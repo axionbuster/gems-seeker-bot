@@ -1,16 +1,12 @@
 -- | Generic uniform-cost (Dijkstra) search with move tracking.
 --
--- Ported from @references/pure-solver@ (@src/Dijk.hs@). The reference threads
--- the search frontier through a strict 'State'; here we thread @(queue, costs)@
--- explicitly, which keeps the same structure without an mtl dependency. The
--- crucial idea carried over is /move tracking/: each settled state stores the
--- edge label that reached it, so the solution is reconstructed directly rather
--- than re-derived by diffing states.
+-- The frontier is threaded as an explicit @(queue, costs)@ pair, which keeps
+-- the implementation small without an extra dependency. Each settled state
+-- stores the edge label that reached it, so the solution is reconstructed
+-- directly rather than re-derived by diffing states.
 --
 -- @HashPSQ@ keys are unique, so reinserting a state with a lower cost is a
 -- proper decrease-key; with non-negative edge costs a popped state is final.
--- Performance matters here, but the dominant cost is hashing the (currently
--- list-backed) state — see @Board@'s note on the packed representation.
 module Search.Dijkstra
   ( dijkstra
   ) where

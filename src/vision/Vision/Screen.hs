@@ -15,9 +15,9 @@ findPlayButton sourceTemplate image
   | bestScore < 0.8 = Nothing
   | otherwise = Just (bestX + templateWidth `div` 2, bestY + templateHeight `div` 2)
   where
-    referenceWidth :: Double
-    referenceWidth = 696
-    scale = fromIntegral (imageWidth image) / referenceWidth
+    baseWidth :: Double
+    baseWidth = 696
+    scale = fromIntegral (imageWidth image) / baseWidth
     template =
       resizeNearest
         (round (fromIntegral (imageWidth sourceTemplate) * scale))

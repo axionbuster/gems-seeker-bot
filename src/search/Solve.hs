@@ -1,10 +1,9 @@
 -- | Top-level solver: turn a board into the optimal sequence of gravity moves.
 --
--- Ported from @references/pure-solver@ (@src/SolveTotM2.hs@). The search runs
--- over @'Either' ('Exc' 'Board') 'Board'@: an ongoing game is @Right b@, a
--- finished one is @Left (Won b)@ or @Left Lost@. Only @Right@ states expand, and
--- the goal is @Left (Won _)@ — so a winning move (one that leaves no gems) is the
--- terminal we search for, and losing moves become dead ends with no successors.
+-- The search runs over @'Either' ('Exc' 'Board') 'Board'@: an ongoing game is
+-- @Right b@, a finished one is @Left (Won b)@ or @Left Lost@. Only @Right@
+-- states expand, and the goal is @Left (Won _)@, so a winning move is the
+-- terminal we search for and losing moves become dead ends.
 module Solve
   ( solve
   , parseCase
@@ -28,8 +27,8 @@ solve board0 = snd <$> dijkstra start isGoal successors
     isGoal (Left (Won _)) = True
     isGoal _              = False
 
--- | Parse the reference case-file format: a leading case count, a @"W H"@ line,
--- then @H@ grid rows. Only the first case is read.
+-- | Parse the case-file format: a leading case count, a @"W H"@ line, then
+-- @H@ grid rows. Only the first case is read.
 parseCase :: String -> Board
 parseCase s = case lines s of
   (_count : dims : rest) ->

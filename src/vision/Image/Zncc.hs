@@ -1,11 +1,10 @@
 -- | Zero-mean normalized cross-correlation (template matching).
 --
--- Ported from @references/experiments@ (@src/image/Image/Zncc.hs@). Correlates a
--- template against a window of a (larger-or-equal) source image placed at a
--- given offset, using a single-pass Welford accumulation over the three colour
--- channels. The result is in @[-1, 1]@: @1@ a perfect match, @0@ no linear
--- relationship (also returned when the template does not fit or a window is
--- flat). The board parser searches a few offsets and keeps the best score.
+-- Correlates a template against a window of a larger-or-equal source image
+-- placed at a given offset, using a single-pass Welford accumulation over the
+-- three colour channels. The result is in @[-1, 1]@: @1@ is a perfect match,
+-- @0@ means no linear relationship. The board parser searches a few offsets
+-- and keeps the best score.
 module Image.Zncc
   ( zncc
   , bestZncc

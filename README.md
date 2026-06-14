@@ -1,0 +1,60 @@
+# Gems Seeker Bot
+
+A macOS bot for the Gem Seeker minigame from Tomb of the Mask+.
+
+It captures the game window, reads the board from a few frames, solves the level, and replays the winning move sequence as swipe gestures.
+
+![Gameplay capture](assets/readme/gameplay.png)
+
+## What it does
+
+- Captures the mirrored phone window with macOS tools.
+- Parses the board from 1 to 3 good frames.
+- Solves the full board before it starts replaying moves.
+- Replays gravity moves with `cliclick`.
+
+## Requirements
+
+- macOS
+- Cabal and GHC 9.14.x
+- `cliclick` on `PATH` (`brew install cliclick`)
+- Accessibility permission for the terminal or runner
+- Screen Recording permission if `screencapture` prompts for access
+
+## Quick Start
+
+```bash
+cabal build all
+cabal test
+cabal run gems-seeker-bot
+```
+
+A few useful subcommands:
+
+```bash
+cabal run gems-seeker-bot -- solve test/fixtures/cases/case0.txt
+cabal run gems-seeker-bot -- parse test/fixtures/frames/live-window.png
+cabal run gems-seeker-bot -- capture
+cabal run gems-seeker-bot -- swipe left
+```
+
+## How It Works
+
+1. The app captures the active iPhone Mirroring window.
+2. Vision code classifies the board from a handful of frames.
+3. Search code computes the full solution.
+4. The macOS gesture layer replays the moves.
+
+## Repository Layout
+
+- `app/` - command-line entry point and mode dispatch
+- `src/search/` - board model, physics, and solver
+- `src/vision/` - image helpers and board parsing
+- `src/mac/` - window capture and gestures
+- `assets/` - bundled templates and README imagery
+- `test/fixtures/` - board and frame fixtures used by the test suite
+- `test/` - hspec tests
+
+## License
+
+BSD-3-Clause. See [LICENSE](LICENSE).
