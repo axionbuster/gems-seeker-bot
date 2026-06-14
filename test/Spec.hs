@@ -26,7 +26,13 @@ import Image.Zncc (bestZncc, zncc)
 import Vision.Board (parseBoard, prepareTemplates, validateParsedBoard)
 
 #ifdef DARWIN
-import Mac.Mirror (Rect (..), parseGeometry, windowCenter)
+import Mac.Mirror
+  ( Rect (..)
+  , parseGeometries
+  , parseGeometry
+  , selectPhoneWindow
+  , windowCenter
+  )
 import Mac.Gesture (cliclickArgs, swipeTarget)
 #endif
 
@@ -208,6 +214,18 @@ main = hspec $ do
       parseGeometry " 100.0 , 200.0 , 300.0 , 400.0 " `shouldBe` Just (Rect 100 200 300 400)
     it "rejects malformed geometry" $
       parseGeometry "not,a,rect" `shouldBe` Nothing
+
+    it "parses every valid window geometry" $
+      parseGeometries "23,39,66,20\n17,30,348,766\nbad\n"
+        `shouldBe` [Rect 23 39 66 20, Rect 17 30 348 766]
+
+    it "selects the phone window after a tiny guard dialog" $
+      selectPhoneWindow [Rect 23 39 66 20, Rect 17 30 348 766]
+        `shouldBe` Just (Rect 17 30 348 766)
+
+    it "rejects a window list containing only guard dialogs" $
+      selectPhoneWindow [Rect 23 39 66 20]
+        `shouldBe` Nothing
 
   describe "Mac gesture geometry" $ do
     let rect = Rect 0 0 200 200 -- centre (100,100)
