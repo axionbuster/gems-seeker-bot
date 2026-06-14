@@ -3,3 +3,7 @@ dist-newstyle/
 *.o
 *.hi
 *.hie
+
+# Generated during runtime
+/frame.png
+
