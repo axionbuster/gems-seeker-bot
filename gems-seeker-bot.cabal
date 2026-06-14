@@ -89,3 +89,7 @@ test-suite gsb-test
                     , hspec >= 2.11.17 && < 2.12
                     , gems-seeker-bot:gsb-search
                     , gems-seeker-bot:gsb-vision
+    -- Mac libs are Darwin-only; the whole project targets macOS anyway.
+    if os(osx)
+        build-depends: gems-seeker-bot:gsb-mac
+        cpp-options:   -DDARWIN

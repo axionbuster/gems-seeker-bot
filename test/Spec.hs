@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Main (main) where
 
 import Control.Monad (filterM)
@@ -22,6 +24,11 @@ import Solve (parseCase, solve)
 import Image (Image, PixelRGB8 (..), convertRGB8, generateImage, pixelAt, readImage)
 import Image.Zncc (bestZncc, zncc)
 import Vision.Board (parseBoard, prepareTemplates)
+
+#ifdef DARWIN
+import Mac.Mirror (Rect (..), parseGeometry, windowCenter)
+import Mac.Gesture (cliclickArgs, swipeTarget)
+#endif
 
 -- A non-flat RGB gradient image (non-zero variance, so ZNCC is well-defined).
 gradient :: Int -> Int -> Image PixelRGB8
@@ -192,6 +199,29 @@ main = hspec $ do
                   then pixelAtG t lx ly
                   else PixelRGB8 128 128 128
       bestZncc t s 3 (2, 3) `shouldSatisfy` near 1
+
+#ifdef DARWIN
+  describe "Mac.Mirror.parseGeometry" $ do
+    it "parses integer geometry" $
+      parseGeometry "100,200,300,400\n" `shouldBe` Just (Rect 100 200 300 400)
+    it "tolerates decimal geometry" $
+      parseGeometry " 100.0 , 200.0 , 300.0 , 400.0 " `shouldBe` Just (Rect 100 200 300 400)
+    it "rejects malformed geometry" $
+      parseGeometry "not,a,rect" `shouldBe` Nothing
+
+  describe "Mac gesture geometry" $ do
+    let rect = Rect 0 0 200 200 -- centre (100,100)
+    it "centres the window" $
+      windowCenter rect `shouldBe` (100, 100)
+    it "aims each swipe 100px from centre" $ do
+      swipeTarget rect U `shouldBe` (100, 0)
+      swipeTarget rect D `shouldBe` (100, 200)
+      swipeTarget rect L `shouldBe` (0, 100)
+      swipeTarget rect R `shouldBe` (200, 100)
+    it "builds a press/drag/release cliclick vector" $
+      cliclickArgs rect R
+        `shouldBe` ["-e", "500", "w:2000", "m:100,100", "dd:100,100", "dm:200,100", "du:200,100"]
+#endif
 
   -- CV oracle: the reference Experiment2 classifies every one of its 61 frames
   -- to the same board; our port must reproduce that consensus from a few of

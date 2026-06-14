@@ -1,23 +1,64 @@
 -- | Replay solver moves as macOS swipe gestures.
 --
--- TODO: port the drag geometry from references/experiments
--- (@src/mac/Mac/Mirror.hs@, @scrollAll@), driving @cliclick@.
+-- Ported from @references/experiments@ (@src/mac/Mac/Mirror.hs@, @scroll@), an
+-- approach already proven to drive the live game. Each swipe is an absolute
+-- @cliclick@ drag from the window centre ~100px in the move's direction, so no
+-- human cursor placement is needed; the drag shape and timing match the
+-- known-good reference values.
 module Mac.Gesture
   ( swipe
+  , swipeTarget
+  , cliclickArgs
   , replay
   ) where
 
 import Board (Dir (..))
-import Mac.Mirror (Rect)
+import Mac.Mirror (Rect, windowCenter)
+import UnliftIO.Concurrent (threadDelay)
+import UnliftIO.Process (callProcess)
+
+-- | Distance, in points, dragged from the window centre for a swipe.
+swipeDelta :: Int
+swipeDelta = 100
+
+-- | Endpoint of the drag for a gravity direction (window centre offset by
+-- 'swipeDelta').
+swipeTarget :: Rect -> Dir -> (Int, Int)
+swipeTarget rect dir = case dir of
+  U -> (cx, cy - swipeDelta)
+  D -> (cx, cy + swipeDelta)
+  L -> (cx - swipeDelta, cy)
+  R -> (cx + swipeDelta, cy)
+  where
+    (cx, cy) = windowCenter rect
+
+-- | The @cliclick@ argument vector for one swipe: settle, press at centre, drag
+-- to the target, release. Pure so it can be unit-tested.
+cliclickArgs :: Rect -> Dir -> [String]
+cliclickArgs rect dir =
+  [ "-e", "500"
+  , "w:2000"
+  , "m:" ++ point (cx, cy)
+  , "dd:" ++ point (cx, cy)
+  , "dm:" ++ point (tx, ty)
+  , "du:" ++ point (tx, ty)
+  ]
+  where
+    (cx, cy) = windowCenter rect
+    (tx, ty) = swipeTarget rect dir
+    point (x, y) = show x ++ "," ++ show y
 
 -- | One gravity swipe within a region.
 swipe :: Rect -> Dir -> IO ()
-swipe _region dir = case dir of
-  U -> pure ()
-  D -> pure ()
-  L -> pure ()
-  R -> pure ()
+swipe rect dir = callProcess "cliclick" (cliclickArgs rect dir)
 
--- | Replay a full solution as a sequence of swipes.
+-- | Replay a full solution as a sequence of swipes, pausing ~1s between them so
+-- the board settles. Focus the target app first (see 'Mac.Mirror.focusApp').
 replay :: Rect -> [Dir] -> IO ()
-replay region = mapM_ (swipe region)
+replay rect = go
+  where
+    go [] = pure ()
+    go (d : ds) = do
+      swipe rect d
+      threadDelay 1000000
+      go ds
