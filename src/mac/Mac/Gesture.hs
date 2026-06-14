@@ -20,10 +20,6 @@ import           UnliftIO.Concurrent (threadDelay)
 swipeDelta :: Int
 swipeDelta = 100
 
--- | Time for the app to receive focus before the drag starts, in microseconds.
-preSwipeDelay :: Int
-preSwipeDelay = 500000
-
 -- | Time after a swipe for the gravity animation to settle, in microseconds.
 moveSettleDelay :: Int
 moveSettleDelay = 1000000
@@ -70,19 +66,18 @@ imagePointToScreen rect (imageWidth, imageHeight) (imageX, imageY) =
 clickPoint :: (Int, Int) -> IO ()
 clickPoint = Native.click
 
--- | One gravity swipe within a region.
-swipe :: Rect -> Dir -> IO ()
-swipe rect dir = do
-  threadDelay preSwipeDelay
-  Native.drag (swipePath rect dir)
+-- | One weak gravity swipe. Returns 'False' after yielding to pointer input.
+swipe :: Rect -> Dir -> IO Bool
+swipe rect dir =
+  (== Native.DragCompleted) <$> Native.drag (swipePath rect dir)
 
--- | Replay a full solution as a sequence of swipes, pausing briefly so
--- the board settles. Focus the target app first (see 'Mac.Mirror.focusApp').
-replay :: Rect -> [Dir] -> IO ()
+-- | Replay a solution until complete or interrupted by pointer input.
+replay :: Rect -> [Dir] -> IO Bool
 replay rect = go
   where
-    go [] = pure ()
+    go [] = pure True
     go (d : ds) = do
-      swipe rect d
-      threadDelay moveSettleDelay
-      go ds
+      completed <- swipe rect d
+      if completed
+        then threadDelay moveSettleDelay >> go ds
+        else pure False

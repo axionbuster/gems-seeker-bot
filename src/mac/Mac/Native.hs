@@ -1,6 +1,7 @@
 -- | Private FFI bindings for the Objective-C macOS integration.
 module Mac.Native
-  ( capturePng
+  ( DragResult (..)
+  , capturePng
   , click
   , drag
   ) where
@@ -14,6 +15,10 @@ import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Marshal.Array (withArray)
 import           Foreign.Ptr           (Ptr, castPtr, nullPtr)
 import           Foreign.Storable      (peek, poke)
+
+-- | Whether a weak drag completed or yielded to other pointer input.
+data DragResult = DragCompleted | DragInterrupted
+  deriving (Eq, Show)
 
 -- | Capture a global screen rectangle and return PNG bytes.
 capturePng :: Int -> Int -> Int -> Int -> IO BS.ByteString
@@ -50,14 +55,23 @@ click (x, y) =
   withNativeError "native click failed" $ \errorOut ->
     cClick (fromIntegral x) (fromIntegral y) errorOut
 
--- | Drag the primary button through absolute screen points.
-drag :: [(Int, Int)] -> IO ()
+-- | Drag through absolute screen points, yielding to other pointer input.
+drag :: [(Int, Int)] -> IO DragResult
 drag points
   | length points < 2 = ioError (userError "native drag requires at least two points")
   | otherwise =
       withArray coordinates $ \coordinatesPtr ->
-        withNativeError "native drag failed" $ \errorOut ->
-          cDrag coordinatesPtr (fromIntegral (length points)) errorOut
+        alloca $ \errorOut -> do
+          poke errorOut nullPtr
+          result <-
+            cDrag
+              coordinatesPtr
+              (fromIntegral (length points))
+              errorOut
+          case result of
+            0 -> pure DragCompleted
+            2 -> pure DragInterrupted
+            _ -> throwNativeError "native drag failed" errorOut
   where
     coordinates =
       concatMap (\(x, y) -> [fromIntegral x, fromIntegral y]) points

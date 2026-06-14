@@ -98,8 +98,10 @@ runSwipe dirText =
       app <- appName
       rect <- requireWindow
       focusApp app
-      swipe rect dir
-      putStrLn ("swiped " ++ show dir)
+      completed <- swipe rect dir
+      if completed
+        then putStrLn ("swiped " ++ show dir)
+        else putStrLn "stopped: pointer input interrupted swipe"
 
 runFull :: IO ()
 runFull = do
@@ -150,10 +152,14 @@ loop app templates playTemplate consecutivePlayClicks transientRetries = do
                 Just moves -> do
                   putStrLn (show (length moves) ++ " moves: " ++ unwords (map show moves))
                   focusApp app
-                  replay rect moves
-                  putStrLn "done"
-                  threadDelay 500000
-                  loop app templates playTemplate 0 0
+                  completed <- replay rect moves
+                  if completed
+                    then do
+                      putStrLn "done"
+                      threadDelay 500000
+                      loop app templates playTemplate 0 0
+                    else
+                      putStrLn "stopped: pointer input interrupted replay"
 
 -- helpers --------------------------------------------------------------------
 

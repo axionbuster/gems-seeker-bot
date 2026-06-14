@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
   and Core Graphics gestures inside the executable.
 - Reduced each swipe to a short linear event path with enough time for iPhone
   Mirroring and the game animation to process every move.
+- Made gesture replay yield immediately when other pointer input is detected.
 
 ## 0.1.0.0 - 2026-06-13
 

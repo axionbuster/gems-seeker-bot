@@ -9,7 +9,18 @@
 #include <string.h>
 #include <unistd.h>
 
+static const useconds_t dragLeadInUs = 500000;
 static const useconds_t eventDelayUs = 20000;
+static const useconds_t monitorPollUs = 2000;
+static const int nativeInterrupted = 2;
+static const int64_t syntheticEventTag = INT64_C(0x4753424E41544956);
+static BOOL hasAutomationPosition = NO;
+static CGPoint automationPosition;
+
+typedef struct {
+  BOOL interrupted;
+  CFMachPortRef eventTap;
+} PointerMonitor;
 
 static void setError(char **outError, NSString *message) {
   if (outError == NULL) {
@@ -51,9 +62,110 @@ static BOOL postMouseEvent(
     return NO;
   }
 
+  CGEventSetIntegerValueField(
+      event,
+      kCGEventSourceUserData,
+      syntheticEventTag);
   CGEventPost(kCGHIDEventTap, event);
   CFRelease(event);
   return YES;
+}
+
+static CGPoint currentPointerLocation(void) {
+  CGEventRef event = CGEventCreate(NULL);
+  if (event == NULL) {
+    return CGPointZero;
+  }
+
+  CGPoint location = CGEventGetLocation(event);
+  CFRelease(event);
+  return location;
+}
+
+static BOOL pointerMovedFromAutomationPosition(void) {
+  if (!hasAutomationPosition) {
+    return NO;
+  }
+
+  CGPoint current = currentPointerLocation();
+  return fabs(current.x - automationPosition.x) > 1.0
+      || fabs(current.y - automationPosition.y) > 1.0;
+}
+
+static CGEventRef monitorPointerInput(
+    CGEventTapProxy proxy,
+    CGEventType type,
+    CGEventRef event,
+    void *userInfo) {
+  (void)proxy;
+  PointerMonitor *monitor = userInfo;
+  if (type == kCGEventTapDisabledByTimeout
+      || type == kCGEventTapDisabledByUserInput) {
+    monitor->interrupted = YES;
+    return event;
+  }
+
+  int64_t tag = CGEventGetIntegerValueField(
+      event,
+      kCGEventSourceUserData);
+  if (tag != syntheticEventTag) {
+    monitor->interrupted = YES;
+  }
+  return event;
+}
+
+static CFMachPortRef createPointerMonitor(
+    PointerMonitor *monitor,
+    char **outError) {
+  CGEventMask mask =
+      CGEventMaskBit(kCGEventLeftMouseDown)
+      | CGEventMaskBit(kCGEventLeftMouseUp)
+      | CGEventMaskBit(kCGEventRightMouseDown)
+      | CGEventMaskBit(kCGEventRightMouseUp)
+      | CGEventMaskBit(kCGEventMouseMoved)
+      | CGEventMaskBit(kCGEventLeftMouseDragged)
+      | CGEventMaskBit(kCGEventRightMouseDragged)
+      | CGEventMaskBit(kCGEventScrollWheel)
+      | CGEventMaskBit(kCGEventOtherMouseDown)
+      | CGEventMaskBit(kCGEventOtherMouseUp)
+      | CGEventMaskBit(kCGEventOtherMouseDragged);
+  CFMachPortRef eventTap = CGEventTapCreate(
+      kCGHIDEventTap,
+      kCGHeadInsertEventTap,
+      kCGEventTapOptionListenOnly,
+      mask,
+      monitorPointerInput,
+      monitor);
+  if (eventTap == NULL) {
+    setError(
+        outError,
+        @"Could not monitor pointer input for a weak gesture.");
+  }
+  return eventTap;
+}
+
+static BOOL waitWhileMonitoring(
+    useconds_t durationUs,
+    PointerMonitor *monitor) {
+  useconds_t remaining = durationUs;
+  while (remaining > 0 && !monitor->interrupted) {
+    useconds_t slice = MIN(remaining, monitorPollUs);
+    CFRunLoopRunInMode(
+        kCFRunLoopDefaultMode,
+        (CFTimeInterval)slice / 1000000.0,
+        true);
+    remaining -= slice;
+  }
+  return !monitor->interrupted;
+}
+
+static void releasePrimaryButtonAtCurrentLocation(void) {
+  CGPoint location = currentPointerLocation();
+  postMouseEvent(
+      kCGEventLeftMouseUp,
+      (int32_t)llround(location.x),
+      (int32_t)llround(location.y),
+      NULL);
 }
 
 int gsb_capture_png(
@@ -168,7 +280,12 @@ int gsb_click(int32_t x, int32_t y, char **outError) {
       return 1;
     }
     usleep(15000);
-    return postMouseEvent(kCGEventLeftMouseUp, x, y, outError) ? 0 : 1;
+    if (!postMouseEvent(kCGEventLeftMouseUp, x, y, outError)) {
+      return 1;
+    }
+    automationPosition = CGPointMake(x, y);
+    hasAutomationPosition = YES;
+    return 0;
   }
 }
 
@@ -187,17 +304,57 @@ int gsb_drag(
     if (!ensureAccessibility(outError)) {
       return 1;
     }
+    if (pointerMovedFromAutomationPosition()) {
+      hasAutomationPosition = NO;
+      return nativeInterrupted;
+    }
+
+    PointerMonitor monitor = {
+      .interrupted = NO,
+      .eventTap = NULL,
+    };
+    monitor.eventTap = createPointerMonitor(&monitor, outError);
+    if (monitor.eventTap == NULL) {
+      return 1;
+    }
+    CFRunLoopSourceRef monitorSource = CFMachPortCreateRunLoopSource(
+        kCFAllocatorDefault,
+        monitor.eventTap,
+        0);
+    if (monitorSource == NULL) {
+      CFRelease(monitor.eventTap);
+      setError(outError, @"Could not attach the pointer input monitor.");
+      return 1;
+    }
+    CFRunLoopAddSource(
+        CFRunLoopGetCurrent(),
+        monitorSource,
+        kCFRunLoopCommonModes);
+
+    if (!waitWhileMonitoring(dragLeadInUs, &monitor)) {
+      CFRunLoopRemoveSource(
+          CFRunLoopGetCurrent(),
+          monitorSource,
+          kCFRunLoopCommonModes);
+      CFRelease(monitorSource);
+      CFRelease(monitor.eventTap);
+      return nativeInterrupted;
+    }
 
     int32_t startX = coordinates[0];
     int32_t startY = coordinates[1];
     if (!postMouseEvent(kCGEventMouseMoved, startX, startY, outError)) {
-      return 1;
+      goto dragError;
     }
-    usleep(eventDelayUs);
+    if (!waitWhileMonitoring(eventDelayUs, &monitor)) {
+      goto dragInterruptedBeforeDown;
+    }
     if (!postMouseEvent(kCGEventLeftMouseDown, startX, startY, outError)) {
-      return 1;
+      goto dragError;
     }
-    usleep(eventDelayUs);
+    if (!waitWhileMonitoring(eventDelayUs, &monitor)) {
+      goto dragInterrupted;
+    }
 
     // A few evenly spaced drag events produce a compact swipe without the
     // hundreds of eased events that overloaded iPhone Mirroring.
@@ -205,16 +362,52 @@ int gsb_drag(
       int32_t x = coordinates[index * 2];
       int32_t y = coordinates[index * 2 + 1];
       if (!postMouseEvent(kCGEventLeftMouseDragged, x, y, outError)) {
-        postMouseEvent(kCGEventLeftMouseUp, x, y, NULL);
-        return 1;
+        goto dragErrorWithButtonDown;
       }
-      usleep(eventDelayUs);
+      if (!waitWhileMonitoring(eventDelayUs, &monitor)) {
+        goto dragInterrupted;
+      }
     }
 
     size_t last = pointCount - 1;
     int32_t endX = coordinates[last * 2];
     int32_t endY = coordinates[last * 2 + 1];
-    return postMouseEvent(kCGEventLeftMouseUp, endX, endY, outError) ? 0 : 1;
+    if (!postMouseEvent(kCGEventLeftMouseUp, endX, endY, outError)) {
+      goto dragError;
+    }
+    automationPosition = CGPointMake(endX, endY);
+    hasAutomationPosition = YES;
+    CFRunLoopRemoveSource(
+        CFRunLoopGetCurrent(),
+        monitorSource,
+        kCFRunLoopCommonModes);
+    CFRelease(monitorSource);
+    CFRelease(monitor.eventTap);
+    return 0;
+
+dragInterrupted:
+    releasePrimaryButtonAtCurrentLocation();
+dragInterruptedBeforeDown:
+    CFRunLoopRemoveSource(
+        CFRunLoopGetCurrent(),
+        monitorSource,
+        kCFRunLoopCommonModes);
+    CFRelease(monitorSource);
+    CFRelease(monitor.eventTap);
+    hasAutomationPosition = NO;
+    return nativeInterrupted;
+
+dragErrorWithButtonDown:
+    releasePrimaryButtonAtCurrentLocation();
+dragError:
+    CFRunLoopRemoveSource(
+        CFRunLoopGetCurrent(),
+        monitorSource,
+        kCFRunLoopCommonModes);
+    CFRelease(monitorSource);
+    CFRelease(monitor.eventTap);
+    hasAutomationPosition = NO;
+    return 1;
   }
 }
 

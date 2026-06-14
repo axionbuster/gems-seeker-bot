@@ -12,6 +12,7 @@ It captures the game window, reads the board from a few frames, solves the level
 - Parses the board from 1 to 3 good frames.
 - Solves the full board before it starts replaying moves.
 - Replays gravity moves with native Core Graphics events.
+- Yields and stops replay when it detects competing pointer input.
 
 ## Requirements
 

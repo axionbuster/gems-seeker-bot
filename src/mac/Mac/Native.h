@@ -17,7 +17,8 @@ int gsb_capture_png(
 // Post one primary-button click at an absolute screen point.
 int gsb_click(int32_t x, int32_t y, char **out_error);
 
-// Drag the primary button through point_count absolute screen points.
+// Drag through absolute screen points, yielding when other pointer input occurs.
+// Returns 0 when complete, 2 when interrupted by pointer input, and 1 on error.
 int gsb_drag(
     const int32_t *coordinates,
     size_t point_count,
