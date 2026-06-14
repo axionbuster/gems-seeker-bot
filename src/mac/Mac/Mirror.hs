@@ -12,9 +12,9 @@ module Mac.Mirror
   , captureFrame
   ) where
 
-import           Codec.Picture.Types (Image, PixelRGB8)
-import           Data.List           (find, maximumBy)
-import           Data.Ord            (comparing)
+import           Codec.Picture.Types
+import           Data.List
+import           Data.Ord
 import qualified Mac.Native          as Native
 
 -- | A screen rectangle, in points.
@@ -29,8 +29,7 @@ data Rect = Rect
 -- | A native window identifier paired with its absolute screen rectangle.
 data Window = Window
   { windowId   :: {-# UNPACK #-} !Int
-  -- | Absolute screen rectangle used to position pointer gestures.
-  , windowRect :: !Rect
+  , windowRect ::                !Rect -- ^ Absolute screen rectangle for pointer gestures.
   }
   deriving (Eq, Show)
 

@@ -9,7 +9,7 @@ module Image.Frame
   ) where
 
 import           Codec.Picture
-import           Codec.Picture.Types  (convertImage)
+import           Codec.Picture.Types
 import qualified Data.ByteString      as B
 import qualified Data.ByteString.Lazy as BL
 
@@ -29,12 +29,12 @@ resizeNearest :: Int -> Int -> Image PixelRGB8 -> Image PixelRGB8
 resizeNearest targetWidth targetHeight source =
   generateImage sample (max 1 targetWidth) (max 1 targetHeight)
   where
-    sourceWidth = imageWidth source
+    sourceWidth  = imageWidth source
     sourceHeight = imageHeight source
     sample x y =
       pixelAt
         source
-        (min (sourceWidth - 1) (x * sourceWidth `div` max 1 targetWidth))
+        (min (sourceWidth  - 1) (x * sourceWidth  `div` max 1 targetWidth ))
         (min (sourceHeight - 1) (y * sourceHeight `div` max 1 targetHeight))
 
 encodeRgb :: Image PixelRGB8 -> B.ByteString

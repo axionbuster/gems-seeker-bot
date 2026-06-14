@@ -18,17 +18,16 @@ module Board
   , cellToChar
   ) where
 
-import           Control.Monad              (unless, when)
-import           Control.Monad.ST           (ST, runST)
-import           Control.Monad.Trans.Class  (lift)
-import           Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import           Data.Array                 (Array, elems, listArray)
-import           Data.Array.MArray          (freeze, readArray, thaw,
-                                             writeArray)
-import           Data.Array.ST              (STArray)
-import           Data.Hashable              (Hashable)
-import           Data.STRef                 (newSTRef, readSTRef, writeSTRef)
-import           GHC.Generics               (Generic)
+import           Control.Monad
+import           Control.Monad.ST
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Except
+import           Data.Array
+import           Data.Array.MArray
+import           Data.Array.ST
+import           Data.Hashable
+import           Data.STRef
+import           GHC.Generics
 
 -- | One grid cell. Glyphs: @.@ air, @\@@ gem, @%@ bat, @#@ wall, @*@ player.
 data Cell = Air | Gem | Bat | Wall | Player

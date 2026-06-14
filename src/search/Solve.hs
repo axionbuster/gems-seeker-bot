@@ -9,9 +9,8 @@ module Solve
   , parseCase
   ) where
 
-import           Board           (Board (..), Dir (..), Exc (..), allDirs,
-                                  applyGravity, boardFromLines)
-import           Search.Dijkstra (dijkstra)
+import           Board
+import           Search.Dijkstra
 
 -- | The optimal move sequence that collects every gem, if one exists. The empty
 -- list is returned for a board that already has no gems.
@@ -20,10 +19,8 @@ solve board0 = snd <$> dijkstra start isGoal successors
   where
     start :: Either (Exc Board) Board
     start = Right board0
-
     successors (Right b) = [(d, applyGravity d b) | d <- allDirs]
     successors (Left _)  = []
-
     isGoal (Left (Won _)) = True
     isGoal _              = False
 

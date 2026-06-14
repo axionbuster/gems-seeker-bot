@@ -5,31 +5,25 @@
 --
 --   * @solve \<board.txt\>@  — text board in, move sequence out (no CV, no mac)
 --   * @parse \<frame.png\>@  — CV only: classify a frame, print the glyph board
---   * @capture [out.png]@   — mac only: grab the game window to a PNG
+--   * @capture [out.png]@    — mac only: grab the game window to a PNG
 --   * @swipe \<dir\>@        — mac only: issue one gravity swipe
---   * @run@ (default)       — the full capture -> parse -> solve -> replay loop
+--   * @run@ (default)        — the full capture -> parse -> solve -> replay loop
 --
 -- The mirrored app name defaults to \"iPhone Mirroring\" and can be overridden
 -- with the @GSB_APP@ environment variable.
 module Main (main) where
 
-import           Control.Concurrent (threadDelay)
-import           Data.Char          (isDigit, toLower)
-import           System.Environment (getArgs, lookupEnv)
-import           System.Exit        (exitFailure)
-import           System.IO          (hPutStrLn, stderr)
-
-import           Board              (Board, Dir (..), boardFromLines,
-                                     renderBoard)
-import           Image              (Image, PixelRGB8, convertRGB8, imageHeight,
-                                     imageWidth, readImage, writePng)
-import           Mac.Gesture        (clickPoint, imagePointToScreen, replay,
-                                     swipe)
-import           Mac.Mirror         (Window, captureFrame, findWindow, focusApp,
-                                     windowRect)
-import           Solve              (parseCase, solve)
-import           Vision.Board       (Templates, parseBoard, prepareTemplates)
-import           Vision.Screen      (findPlayButton)
+import           Board
+import           Control.Concurrent
+import           Data.Char
+import           Image
+import           Mac.Gesture
+import           Mac.Mirror
+import           Solve
+import           System.Environment
+import           System.Exit
+import           Vision.Board
+import           Vision.Screen
 
 main :: IO ()
 main = do
@@ -45,20 +39,18 @@ main = do
     _                -> usage
 
 usage :: IO ()
-usage = do
-  hPutStrLn stderr $
-    unlines
-      [ "gems-seeker-bot — Gem Seeker solver"
-      , ""
-      , "  solve <board.txt>   solve a text board, print the moves"
-      , "  parse <frame.png>   classify a frame, print the glyph board"
-      , "  capture [out.png]   grab the game window to a PNG (default frame.png)"
-      , "  swipe <up|down|left|right>   issue one gravity swipe"
-      , "  run                 capture, parse, solve, and replay (default)"
-      , ""
-      , "App name override: GSB_APP (default \"iPhone Mirroring\")."
-      ]
-  exitFailure
+usage = die $
+  unlines
+    [ "gems-seeker-bot — Gem Seeker solver"
+    , ""
+    , "  solve <board.txt>            solve a text board, print the moves"
+    , "  parse <frame.png>            classify a frame, print the glyph board"
+    , "  capture [out.png]            grab the game window to a PNG (default frame.png)"
+    , "  swipe <up|down|left|right>   issue one gravity swipe"
+    , "  run                          capture, parse, solve, and replay (default)"
+    , ""
+    , "App name override: GSB_APP (default \"iPhone Mirroring\")."
+    ]
 
 -- subcommands ----------------------------------------------------------------
 
@@ -218,6 +210,3 @@ parseDir s = case map toLower s of
   "right" -> Just R
   "r"     -> Just R
   _       -> Nothing
-
-die :: String -> IO a
-die msg = hPutStrLn stderr msg >> exitFailure

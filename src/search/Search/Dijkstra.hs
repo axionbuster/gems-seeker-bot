@@ -11,8 +11,7 @@ module Search.Dijkstra
   ( dijkstra
   ) where
 
-import           Data.Hashable       (Hashable)
-import           Data.HashMap.Strict (HashMap)
+import           Data.Hashable
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashPSQ        as Q
 
@@ -51,14 +50,14 @@ dijkstra start isGoal successors =
             then (Q.insert vx vd1 () bq, M.insert vx (Step vd1 ux how) costs)
             else (bq, costs)
 
-    recon :: HashMap s (Node s h) -> s -> ([s], [h])
+    recon :: M.HashMap s (Node s h) -> s -> ([s], [h])
     recon costs = walk [] []
       where
         walk accS accH k = case costs M.! k of
           Start        -> (k : accS, accH)
           Step _ k' h' -> walk (k : accS) (h' : accH) k'
 
-lookupCost :: (Hashable s, Ord s) => s -> HashMap s (Node s h) -> Int
+lookupCost :: (Hashable s, Ord s) => s -> M.HashMap s (Node s h) -> Int
 lookupCost k m = case M.lookup k m of
   Just Start           -> 0
   Just (Step cost _ _) -> cost

@@ -3,9 +3,9 @@ module Vision.Screen
   ( findPlayButton
   ) where
 
-import           Codec.Picture (Image, PixelRGB8, imageHeight, imageWidth)
-import           Image.Frame   (resizeNearest)
-import           Image.Zncc    (zncc)
+import           Codec.Picture
+import           Image.Frame
+import           Image.Zncc
 
 -- | Locate the centre of the pixel-font @PLAY@ label near the bottom of the
 -- mirrored phone image. The supplied template is a tight crop of the word.
@@ -23,7 +23,7 @@ findPlayButton sourceTemplate image
         (round (fromIntegral (imageWidth sourceTemplate) * scale))
         (round (fromIntegral (imageHeight sourceTemplate) * scale))
         sourceTemplate
-    templateWidth = imageWidth template
+    templateWidth  = imageWidth template
     templateHeight = imageHeight template
     expectedX = (imageWidth image - templateWidth) `div` 2
     expectedY = round (0.865 * fromIntegral (imageHeight image) :: Double)

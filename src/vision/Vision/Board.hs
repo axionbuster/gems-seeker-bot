@@ -37,17 +37,16 @@ module Vision.Board
   , cellBounds
   ) where
 
-import           Board               (Board (..), Cell (..))
-import           Codec.Picture       (Image, Pixel8, PixelRGB8 (..),
-                                      imageHeight, imageWidth, pixelAt)
-import           Codec.Picture.Types (pixelMap)
-import           Control.Monad       (forM)
-import           Control.Monad.ST    (ST, runST)
-import           Data.Array.ST       (STUArray, newArray, readArray, writeArray)
-import           Data.Complex        (Complex (..), imagPart, realPart)
-import           Data.List           (delete, group, sort)
-import           Image.Frame         (resizeNearest)
-import           Image.Zncc          (zncc)
+import           Board
+import           Codec.Picture
+import           Control.Monad
+import           Control.Monad.ST
+import           Data.Array.ST
+import           Data.Complex
+import           Data.List
+import           Data.Ord
+import           Image.Frame
+import           Image.Zncc
 
 -- | Per-cell classification thresholds, measured and frozen from the calibration
 -- run. Constants now.
@@ -67,13 +66,13 @@ data Thresholds = Thresholds
 calibratedThresholds :: Thresholds
 calibratedThresholds =
   Thresholds
-    { gemLumaThreshold = 0.818193412917773
-    , gemMaskThreshold = 0.4897744778323243
-    , gemYellowFraction = 5.0e-2
-    , batLumaThreshold = 0.42380862933019015
-    , batMaskThreshold = 0.3946005657078237
-    , batCyanFraction = 0.1
-    , airForegroundFraction = 7.719884503474203e-2
+    { gemLumaThreshold           = 0.818193412917773
+    , gemMaskThreshold           = 0.4897744778323243
+    , gemYellowFraction          = 5.0e-2
+    , batLumaThreshold           = 0.42380862933019015
+    , batMaskThreshold           = 0.3946005657078237
+    , batCyanFraction            = 0.1
+    , airForegroundFraction      = 7.719884503474203e-2
     , occupiedForegroundFraction = 0.19444444444444445
     }
 
@@ -184,12 +183,12 @@ validateParsedBoard board@Board {boardCells}
         ( "Vision.Board.parseBoard: expected exactly one player, found "
             ++ show playerCount
         )
-  | gemCount == 0 =
+  | gemsRemaining == 0 =
       Left "Vision.Board.parseBoard: expected at least one gem"
   | otherwise = Right board
   where
     playerCount = length (filter (== Player) boardCells)
-    gemCount = length (filter (== Gem) boardCells)
+    gemsRemaining = length (filter (== Gem) boardCells)
 
 validateBoardEnvelope :: Board -> Either String Board
 validateBoardEnvelope board@Board {boardW, boardH, boardCells}
@@ -243,13 +242,14 @@ estimateGrid image =
       | distance <= 0 -> Left "estimateGrid: grid clusters are in invalid order"
       | otherwise -> Right (Grid {gridPitch = pitch, gridOrigin = origin})
       where
-        distance = realPart secondCenter - realPart firstCenter
-        pitch = 0.08778 * distance
-        originFloat = firstCenter + (0.14743 :+ 0.60539) * (distance :+ 0)
-        origin = (round (realPart originFloat), round (imagPart originFloat))
+        distance    = realPart secondCenter - realPart firstCenter
+        pitch       = 0.08778 * distance
+        originFloat =
+          firstCenter + ((distance * 0.14743) :+ (distance * 0.60539))
+        origin      = (round (realPart originFloat), round (imagPart originFloat))
   where
-    width = imageWidth image
-    height = imageHeight image
+    width     = imageWidth image
+    height    = imageHeight image
     topHeight = height `div` 2
     yellowish = isBrightYellow
 
@@ -296,14 +296,17 @@ estimateGrid image =
     boxes = filter compact (map boundingBox clusters)
     candidatePairs =
       [ if realPart a <= realPart b then (a, b) else (b, a)
-      | firstBox <- boxes
+      | firstBox  <- boxes
       , secondBox <- boxes
       , firstBox /= secondBox
       , let a = centerOf firstBox
       , let b = centerOf secondBox
       , abs (imagPart a - imagPart b) <= 50
       ]
-    widestPair = maximumBy separation candidatePairs
+    widestPair =
+      case candidatePairs of
+        [] -> Nothing
+        xs -> Just (maximumBy (comparing separation) xs)
     separation (left, right) = realPart right - realPart left
 
 -- | Bound the playfield from occupied cell fragments. Some themes draw gaps in
@@ -343,7 +346,7 @@ findPlayfield grid image =
     boardFragment component =
       let xs = map fst component
           ys = map snd component
-          width = maximum xs - minimum xs + 1
+          width  = maximum xs - minimum xs + 1
           height = maximum ys - minimum ys + 1
        in length component >= 2
             && not (width == 1 && height >= 8)
@@ -370,21 +373,21 @@ cellBounds pitch (originX, originY) (cellX, cellY) =
   CellBounds left top (right - left) (bottom - top)
   where
     line origin cell = round (fromIntegral origin + fromIntegral cell * pitch)
-    left = line originX cellX
-    top = line originY cellY
-    right = line originX (cellX + 1)
+    left   = line originX cellX
+    top    = line originY cellY
+    right  = line originX (cellX + 1)
     bottom = line originY (cellY + 1)
 
 -- | The per-cell evidence classification needs: four ZNCC scores and three
 -- pixel-fraction summaries.
 data CellMeasurement = CellMeasurement
-  { gemLumaScore       :: !Double
-  , gemMaskScore       :: !Double
-  , batLumaScore       :: !Double
-  , batMaskScore       :: !Double
-  , foregroundFraction :: !Double
-  , yellowFraction     :: !Double
-  , cyanFraction       :: !Double
+  { gemLumaScore       :: {-# UNPACK #-} !Double
+  , gemMaskScore       :: {-# UNPACK #-} !Double
+  , batLumaScore       :: {-# UNPACK #-} !Double
+  , batMaskScore       :: {-# UNPACK #-} !Double
+  , foregroundFraction :: {-# UNPACK #-} !Double
+  , yellowFraction     :: {-# UNPACK #-} !Double
+  , cyanFraction       :: {-# UNPACK #-} !Double
   }
   deriving (Eq, Show)
 
@@ -396,7 +399,7 @@ measureFrame templates grid playfield image =
   | cellY <- [minCellY playfield .. maxCellY playfield]
   ]
   where
-    bounds = cellBounds (gridPitch grid) (gridOrigin grid)
+    bounds    = cellBounds (gridPitch grid) (gridOrigin grid)
     lumaImage = luminanceImage image
     maskImage = foregroundMask 20 image
 
@@ -457,8 +460,8 @@ fractionOfCell image CellBounds {cellLeft, cellTop, cellWidth, cellHeight} predi
     margin = 4
     pixels =
       [ pixelAt image x y
-      | y <- [cellTop + margin .. cellTop + cellHeight - margin - 1]
-      , x <- [cellLeft + margin .. cellLeft + cellWidth - margin - 1]
+      | y <- [cellTop  + margin .. cellTop  + cellHeight - margin - 1]
+      , x <- [cellLeft + margin .. cellLeft + cellWidth  - margin - 1]
       ]
     sampleCount = length pixels
     matchingCount = length (filter predicate pixels)
@@ -471,7 +474,7 @@ isBrightCyan (PixelRGB8 red green blue) =
   green >= 180
     && blue >= 150
     && fromIntegral green >= fromIntegral red + (70 :: Int)
-    && fromIntegral blue >= fromIntegral red + (50 :: Int)
+    && fromIntegral blue  >= fromIntegral red + (50 :: Int)
 
 luminanceImage :: Image PixelRGB8 -> Image PixelRGB8
 luminanceImage = pixelMap toLuminance
@@ -535,25 +538,25 @@ classifyFrame thresholds width height measurements =
     playerCells =
       if null explicitPlayerCells
         then
-          case maximumBy componentWeight (connectedComponents disconnectedOccupied) of
-            Nothing        -> []
-            Just component -> component
+          case connectedComponents disconnectedOccupied of
+            [] -> []
+            xs -> maximumBy (comparing componentWeight) xs
         else []
     componentWeight = sum . map (foregroundFraction . measurementAt)
     finalCell point =
       case preliminaryAt point of
         Classified cell -> cell
         Occupied
-          | point `elem` wallCells -> Wall
+          | point `elem` wallCells         -> Wall
           | not (null explicitPlayerCells) -> Wall
-          | point `elem` playerCells -> Player
-          | otherwise -> Air
+          | point `elem` playerCells       -> Player
+          | otherwise                      -> Air
 
 classifyMeasurement :: Thresholds -> Bool -> CellMeasurement -> PreliminaryCell
 classifyMeasurement thresholds boundaryCell measurement
-  | isGem = Classified Gem
+  | isGem    = Classified Gem
   | isPlayer = Classified Player
-  | isBat = Classified Bat
+  | isBat    = Classified Bat
   | foregroundFraction measurement <= airForegroundFraction thresholds = Classified Air
   | boundaryCell = Occupied
   | foregroundFraction measurement < occupiedForegroundFraction thresholds = Classified Air
@@ -602,7 +605,7 @@ consensusMap maps@(firstMap : _) =
   ]
   where
     height = length firstMap
-    width = case firstMap of
+    width  = case firstMap of
       []           -> 0
       firstRow : _ -> length firstRow
     votesAt x y = [(frameMap !! y) !! x | frameMap <- maps]
@@ -612,21 +615,11 @@ winningCell [] = Air
 winningCell votes = snd (foldl1 max (voteCounts votes))
   where
     voteCounts = map count . group . sort
-    count g = (length g, headOr Air g)
+    count g    = (length g, headOr Air g)
     headOr d []      = d
     headOr _ (c : _) = c
 
 -- generic helpers -----------------------------------------------------------
-
--- | The element maximising a key; 'Nothing' for an empty list. Ties keep the
--- earlier element from the left fold.
-maximumBy :: Ord weight => (a -> weight) -> [a] -> Maybe a
-maximumBy _ [] = Nothing
-maximumBy weight (first : rest) = Just (foldl' choose first rest)
-  where
-    choose best candidate
-      | weight candidate > weight best = candidate
-      | otherwise = best
 
 -- | The most frequent value; 'Nothing' for an empty list.
 mostCommon :: Ord a => [a] -> Maybe a
@@ -639,10 +632,10 @@ connectedComponents :: [(Int, Int)] -> [[(Int, Int)]]
 connectedComponents [] = []
 connectedComponents (start : remaining) = component : connectedComponents rest
   where
-    (component, rest) = grow [] [start] remaining
-    grow found [] available = (found, available)
+    (component, rest)                      = grow [] [start] remaining
+    grow found               []  available = (found, available)
     grow found (point : pending) available =
-      let adjacent = [n | n <- fourNeighbors point, n `elem` available]
+      let adjacent   = [n | n <- fourNeighbors point, n `elem` available]
           available' = foldl' (flip delete) available adjacent
        in grow (point : found) (adjacent ++ pending) available'
     fourNeighbors (x, y) = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]

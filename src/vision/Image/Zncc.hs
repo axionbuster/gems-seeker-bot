@@ -10,9 +10,8 @@ module Image.Zncc
   , bestZncc
   ) where
 
-import           Codec.Picture       (Image, PixelRGB8 (..), imageHeight,
-                                      imageWidth, pixelAt)
-import           Codec.Picture.Types (pixelFold)
+import           Codec.Picture
+import           Codec.Picture.Types
 
 -- | ZNCC of @template@ against @source@ with the template's top-left corner at
 -- @(offsetX, offsetY)@ in the source.
@@ -46,21 +45,20 @@ zncc template source (offsetX, offsetY)
 bestZncc :: Image PixelRGB8 -> Image PixelRGB8 -> Int -> (Int, Int) -> Double
 bestZncc template source radius (centerX, centerY) =
   maximum
-    ( 0
-        : [ zncc template source (centerX + dx, centerY + dy)
+    ( 0 : [ zncc template source (centerX + dx, centerY + dy)
           | dy <- [-radius .. radius]
           , dx <- [-radius .. radius]
           ]
     )
 
--- Welford running statistics over paired template/source pixels (per channel).
+-- | Welford running statistics over paired template/source pixels (per channel).
 data ZNCCStats = ZNCCStats
-  {-# UNPACK #-} !Int
-  !C3
-  !C3
-  {-# UNPACK #-} !Double
-  {-# UNPACK #-} !Double
-  {-# UNPACK #-} !Double
+  {-# UNPACK #-} !Int     -- ^ Number of accumulated pixels.
+  !C3                     -- ^ Mean of template pixels.
+  !C3                     -- ^ Mean of source pixels.
+  {-# UNPACK #-} !Double  -- ^ Covariance between template and source pixels.
+  {-# UNPACK #-} !Double  -- ^ Sum of squares of template pixel deviations.
+  {-# UNPACK #-} !Double  -- ^ Sum of squares of source pixel deviations.
 
 emptyStats :: ZNCCStats
 emptyStats = ZNCCStats 0 c3Zero c3Zero 0 0 0
@@ -70,7 +68,7 @@ updateStats (ZNCCStats count tMean sMean cov tM2 sM2) tPix sPix =
   ZNCCStats count' tMean' sMean' cov' tM2' sM2'
   where
     count' = count + 1
-    scale = recip (fromIntegral count')
+    scale  = recip (fromIntegral count')
     tDelta = c3Sub tPix tMean
     sDelta = c3Sub sPix sMean
     tMean' = c3Add tMean (c3Scale scale tDelta)
@@ -104,5 +102,4 @@ c3Dot (C3 a1 a2 a3) (C3 b1 b2 b3) = a1 * b1 + a2 * b2 + a3 * b3
 
 pixelToC3 :: PixelRGB8 -> C3
 pixelToC3 (PixelRGB8 r g b) = C3 (fi r) (fi g) (fi b)
-  where
-    fi = fromIntegral @_ @Double
+  where fi = fromIntegral @_ @Double

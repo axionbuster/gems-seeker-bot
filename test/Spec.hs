@@ -2,28 +2,20 @@
 
 module Main (main) where
 
-import           Control.Monad    (filterM)
-import           Data.Either      (isRight)
-import           Data.List        (isInfixOf, isPrefixOf)
-import           System.Directory (doesFileExist)
+import           Board
+import           Control.Monad
+import           Data.Either
+import           Data.List
+import           Image
+import           Solve
+import           System.Directory
 import           Test.Hspec
-
-import           Board            (Board (..), Cell (..), Dir (..), Exc (..),
-                                   applyGravity, gemCount, isSolved,
-                                   renderBoard)
-import           Solve            (parseCase, solve)
-
-import           Image            (Image, PixelRGB8 (..), convertRGB8,
-                                   generateImage, pixelAt, readImage)
-import           Image.Frame      (resizeNearest)
-import           Image.Zncc       (bestZncc, zncc)
-import           Vision.Board     (parseBoard, prepareTemplates,
-                                   validateParsedBoard)
-import           Vision.Screen    (findPlayButton)
+import           Vision.Board
+import           Vision.Screen
 
 #ifdef DARWIN
-import           Mac.Gesture      (imagePointToScreen, swipePath, swipeTarget)
-import           Mac.Mirror       (Rect (..), selectPhoneWindow, windowCenter)
+import           Mac.Gesture
+import           Mac.Mirror
 #endif
 
 -- A non-flat RGB gradient image (non-zero variance, so ZNCC is well-defined).

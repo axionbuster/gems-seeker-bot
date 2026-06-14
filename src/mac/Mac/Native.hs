@@ -8,17 +8,17 @@ module Mac.Native
   , drag
   ) where
 
-import           Codec.Picture.Types   (Image (..), PixelRGB8)
-import           Control.Exception     (finally)
+import           Codec.Picture.Types
+import           Control.Exception
 import qualified Data.Vector.Storable  as VS
-import           Data.Word             (Word8)
-import           Foreign.C.String      (CString, peekCString, withCString)
-import           Foreign.C.Types       (CInt (..), CSize (..), CUInt (..))
-import           Foreign.ForeignPtr    (FinalizerPtr, newForeignPtr)
-import           Foreign.Marshal.Alloc (alloca)
-import           Foreign.Marshal.Array (peekArray, withArray)
-import           Foreign.Ptr           (Ptr, nullPtr)
-import           Foreign.Storable      (peek, poke)
+import           Data.Word
+import           Foreign.C.String
+import           Foreign.C.Types
+import           Foreign.ForeignPtr
+import           Foreign.Marshal.Alloc
+import           Foreign.Marshal.Array
+import           Foreign.Ptr
+import           Foreign.Storable
 
 -- | Whether a weak drag completed or yielded to other pointer input.
 data DragResult = DragCompleted | DragInterrupted
@@ -56,7 +56,7 @@ captureRgb windowId =
                   let pixelCount = capturedWidth * capturedHeight * 3
                   pure
                     Image
-                      { imageWidth = capturedWidth
+                      { imageWidth  = capturedWidth
                       , imageHeight = capturedHeight
                       , imageData = VS.unsafeFromForeignPtr0 foreignPixels pixelCount
                       }

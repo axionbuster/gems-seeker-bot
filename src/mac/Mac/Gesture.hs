@@ -11,10 +11,10 @@ module Mac.Gesture
   , replay
   ) where
 
-import           Board               (Dir (..))
-import           Mac.Mirror          (Rect (..), windowCenter)
+import           Board
+import           Mac.Mirror
 import qualified Mac.Native          as Native
-import           UnliftIO.Concurrent (threadDelay)
+import           UnliftIO.Concurrent
 
 -- | Distance, in points, dragged from the window centre for a swipe.
 swipeDelta :: Int
@@ -59,8 +59,9 @@ imagePointToScreen rect (imageWidth, imageHeight) (imageX, imageY) =
   , rectY rect + scale imageY (rectH rect) imageHeight
   )
   where
+    fi = fromIntegral
     scale value screenExtent imageExtent =
-      round (fromIntegral value * fromIntegral screenExtent / fromIntegral imageExtent :: Double)
+      round (fi value * fi screenExtent / fi imageExtent :: Double)
 
 -- | Click one absolute screen point.
 clickPoint :: (Int, Int) -> IO ()
@@ -68,8 +69,7 @@ clickPoint = Native.click
 
 -- | One weak gravity swipe. Returns 'False' after yielding to pointer input.
 swipe :: Rect -> Dir -> IO Bool
-swipe rect dir =
-  (== Native.DragCompleted) <$> Native.drag (swipePath rect dir)
+swipe rect dir = fmap (== Native.DragCompleted) (Native.drag (swipePath rect dir))
 
 -- | Replay a solution until complete or interrupted by pointer input.
 replay :: Rect -> [Dir] -> IO Bool
