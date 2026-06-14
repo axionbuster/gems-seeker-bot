@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -eu
+
+formatter="${STYLISH_HASKELL:-stylish-haskell}"
+
+if ! command -v "$formatter" >/dev/null 2>&1; then
+  fallback="${HOME}/.local/bin/stylish-haskell"
+  if [ -x "$fallback" ]; then
+    formatter="$fallback"
+  else
+    echo "pre-commit: stylish-haskell is not available on PATH" >&2
+    exit 1
+  fi
+fi
+
+git diff --cached --name-only --diff-filter=ACM -- '*.hs' |
+while IFS= read -r file; do
+  [ -n "$file" ] || continue
+  "$formatter" -i "$file"
+  git add -- "$file"
+done
