@@ -290,6 +290,29 @@ main = hspec $ do
         it "parses the current theme through surrounding window chrome" $
           fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
+  describe "Vision.Board.parseBoard (live brown theme)" $ do
+    let framePath = "test/fixtures/frames/live-brown-window.png"
+        fixturePath = "test/fixtures/frames/live-brown-window.board"
+        required =
+          [ "assets/templates/gem.png"
+          , "assets/templates/bat.png"
+          , framePath
+          , fixturePath
+          ]
+    missing <- runIO (filterM (fmap not . doesFileExist) required)
+    if not (null missing)
+      then it "separates the yellow player from isolated interior walls" $
+        pendingWith ("missing fixtures: " ++ show missing)
+      else do
+        result <- runIO $ do
+          gemT <- loadRGB8 "assets/templates/gem.png"
+          batT <- loadRGB8 "assets/templates/bat.png"
+          frame <- loadRGB8 framePath
+          pure (parseBoard (prepareTemplates gemT batT) [frame])
+        expected <- runIO (readFile fixturePath)
+        it "separates the yellow player from isolated interior walls" $
+          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+
   describe "Vision.Board.validateParsedBoard" $ do
     it "accepts one player with at least one gem" $
       validateParsedBoard (Board 2 1 [Player, Gem])

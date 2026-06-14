@@ -441,6 +441,12 @@ classifyFrame thresholds width height measurements =
       , preliminaryAt (x, y) == Occupied
       ]
     wallCells = floodOccupied width height preliminaryAt boundaryOccupied
+    explicitPlayerCells =
+      [ (x, y)
+      | y <- [0 .. height - 1]
+      , x <- [0 .. width - 1]
+      , preliminaryAt (x, y) == Classified Player
+      ]
     disconnectedOccupied =
       [ (x, y)
       | y <- [0 .. height - 1]
@@ -449,21 +455,26 @@ classifyFrame thresholds width height measurements =
       , (x, y) `notElem` wallCells
       ]
     playerCells =
-      case maximumBy componentWeight (connectedComponents disconnectedOccupied) of
-        Nothing -> []
-        Just component -> component
+      if null explicitPlayerCells
+        then
+          case maximumBy componentWeight (connectedComponents disconnectedOccupied) of
+            Nothing -> []
+            Just component -> component
+        else []
     componentWeight = sum . map (foregroundFraction . measurementAt)
     finalCell point =
       case preliminaryAt point of
         Classified cell -> cell
         Occupied
           | point `elem` wallCells -> Wall
+          | not (null explicitPlayerCells) -> Wall
           | point `elem` playerCells -> Player
           | otherwise -> Air
 
 classifyMeasurement :: Thresholds -> Bool -> CellMeasurement -> PreliminaryCell
 classifyMeasurement thresholds boundaryCell measurement
   | isGem = Classified Gem
+  | isPlayer = Classified Player
   | isBat = Classified Bat
   | foregroundFraction measurement <= airForegroundFraction thresholds = Classified Air
   | boundaryCell = Occupied
@@ -477,6 +488,9 @@ classifyMeasurement thresholds boundaryCell measurement
         || ( gemMaskScore measurement >= gemMaskThreshold thresholds
               && gemLumaScore measurement >= gemLumaThreshold thresholds * 0.5
            )
+    isPlayer =
+      yellowFraction measurement >= 0.15
+        && gemLumaScore measurement < gemLumaThreshold thresholds * 0.5
     isBat =
       cyanFraction measurement >= batCyanFraction thresholds
         && ( batLumaScore measurement >= batLumaThreshold thresholds
