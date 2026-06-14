@@ -3,11 +3,11 @@ module Main (main) where
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
-import Image (decodePng)
+import Image (convertRGB8, decodePng, readImage)
 import Mac.Gesture (replay)
 import Mac.Mirror (captureFrame, findWindow)
 import Solve (solve)
-import Vision.Board (parseBoard)
+import Vision.Board (parseBoard, prepareTemplates)
 
 -- | The intended end-to-end flow, not yet wired (scaffold). We capture the
 -- board programmatically (a frame or two is enough), parse it once, solve it
@@ -19,13 +19,16 @@ _pipeline = do
     Nothing -> hPutStrLn stderr "capture window not found"
     Just region -> do
       png <- captureFrame region
+      gemT <- either error convertRGB8 <$> readImage "assets/templates/gem.png"
+      batT <- either error convertRGB8 <$> readImage "assets/templates/bat.png"
       case decodePng png of
         Left err -> hPutStrLn stderr ("decode failed: " <> err)
-        Right frame -> case parseBoard [frame] of
-          Left err -> hPutStrLn stderr ("parse failed: " <> err)
-          Right board -> case solve board of
-            Nothing -> hPutStrLn stderr "no solution"
-            Just moves -> replay region moves
+        Right frame ->
+          case parseBoard (prepareTemplates gemT batT) [convertRGB8 frame] of
+            Left err -> hPutStrLn stderr ("parse failed: " <> err)
+            Right board -> case solve board of
+              Nothing -> hPutStrLn stderr "no solution"
+              Just moves -> replay region moves
 
 main :: IO ()
 main = do

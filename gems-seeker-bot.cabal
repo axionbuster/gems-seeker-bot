@@ -47,6 +47,7 @@ library gsb-vision
                     , Vision.Board
     build-depends:    base ^>= 4.22.0.0
                     , JuicyPixels >= 3.3.9 && < 3.4
+                    , array >= 0.5.8 && < 0.6
                     , bytestring >= 0.12.2 && < 0.13
                     , vector >= 0.13.2 && < 0.14
                     , gems-seeker-bot:gsb-search
@@ -84,6 +85,7 @@ test-suite gsb-test
     main-is:          Spec.hs
     hs-source-dirs:   test
     build-depends:    base ^>= 4.22.0.0
+                    , directory >= 1.3.8 && < 1.4
                     , hspec >= 2.11.17 && < 2.12
                     , gems-seeker-bot:gsb-search
                     , gems-seeker-bot:gsb-vision

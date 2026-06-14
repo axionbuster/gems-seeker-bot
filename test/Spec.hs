@@ -1,8 +1,11 @@
 module Main (main) where
 
+import Control.Monad (filterM)
 import Data.Either (isRight)
 import Data.List (isInfixOf, isPrefixOf)
+import System.Directory (doesFileExist)
 import Test.Hspec
+import Text.Printf (printf)
 
 import Board
   ( Board (..)
@@ -16,8 +19,9 @@ import Board
   )
 import Solve (parseCase, solve)
 
-import Image (Image, PixelRGB8 (..), generateImage, pixelAt)
+import Image (Image, PixelRGB8 (..), convertRGB8, generateImage, pixelAt, readImage)
 import Image.Zncc (bestZncc, zncc)
+import Vision.Board (parseBoard, prepareTemplates)
 
 -- A non-flat RGB gradient image (non-zero variance, so ZNCC is well-defined).
 gradient :: Int -> Int -> Image PixelRGB8
@@ -31,6 +35,10 @@ gradient w h = generateImage px w h
 
 near :: Double -> Double -> Bool
 near a b = abs (a - b) < 1e-9
+
+loadRGB8 :: FilePath -> IO (Image PixelRGB8)
+loadRGB8 path =
+  either (error . ((path ++ ": ") ++)) convertRGB8 <$> readImage path
 
 pixelAtG :: Image PixelRGB8 -> Int -> Int -> PixelRGB8
 pixelAtG = pixelAt
@@ -184,6 +192,32 @@ main = hspec $ do
                   then pixelAtG t lx ly
                   else PixelRGB8 128 128 128
       bestZncc t s 3 (2, 3) `shouldSatisfy` near 1
+
+  -- CV oracle: the reference Experiment2 classifies every one of its 61 frames
+  -- to the same board; our port must reproduce that consensus from a few of
+  -- them. Skips cleanly if the submodule frames / fixture are not present.
+  describe "Vision.Board.parseBoard (golden: experiments/1 frames)" $ do
+    let gemPath = "assets/templates/gem.png"
+        batPath = "assets/templates/bat.png"
+        framePaths =
+          [ printf "references/experiments/1/frames_%04d.png" (n :: Int)
+          | n <- [1, 2, 3]
+          ]
+        fixturePath = "test/fixtures/frames/scene1.board"
+        required = gemPath : batPath : fixturePath : framePaths
+    missing <- runIO (filterM (fmap not . doesFileExist) required)
+    if not (null missing)
+      then it "reproduces the reference consensus board" $
+        pendingWith ("missing fixtures: " ++ show missing)
+      else do
+        result <- runIO $ do
+          gemT <- loadRGB8 gemPath
+          batT <- loadRGB8 batPath
+          frames <- mapM loadRGB8 framePaths
+          pure (parseBoard (prepareTemplates gemT batT) frames)
+        expected <- runIO (readFile fixturePath)
+        it "reproduces the reference consensus board" $
+          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
   caseSpec "case0 (no bats, 6x8)"
     "references/pure-solver/case0.txt"
