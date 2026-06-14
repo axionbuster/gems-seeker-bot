@@ -23,6 +23,15 @@ It captures the game window, reads the board from a few frames, solves the level
 - Accessibility permission for the terminal or runner
 - Screen Recording permission for the terminal or runner
 
+## Optional Formatting Hook
+
+This repository ships an opt-in pre-commit hook for Haskell formatting.
+
+- Run `./scripts/install-hooks.sh` in a clone to enable it locally.
+- The hook uses `stylish-haskell` when it is available.
+- If you do not have `stylish-haskell`, the hook prints a warning and lets the commit continue.
+- Before opening a pull request, format any changed Haskell files with `stylish-haskell` or another equivalent formatter setup.
+
 ## Quick Start
 
 ```bash

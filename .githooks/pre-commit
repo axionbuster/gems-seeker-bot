@@ -9,8 +9,8 @@ if ! command -v "$formatter" >/dev/null 2>&1; then
   if [ -x "$fallback" ]; then
     formatter="$fallback"
   else
-    echo "pre-commit: stylish-haskell is not available on PATH" >&2
-    exit 1
+    echo "pre-commit: stylish-haskell is not available on PATH; skipping formatting" >&2
+    exit 0
   fi
 fi
 

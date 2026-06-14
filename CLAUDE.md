@@ -48,4 +48,7 @@ Working notes for Codex in this repository.
 - `app/Main.hs` exposes `solve`, `parse`, `capture`, `swipe`, and `run` subcommands.
 - Window discovery, application activation, raw RGB capture, and pointer
   gestures use the Objective-C bridge in `src/mac/Mac/Native.m`.
+- The repository's pre-commit hook is opt-in through `scripts/install-hooks.sh`.
+  If `stylish-haskell` is unavailable, the hook warns and skips formatting
+  rather than blocking the commit.
 - If you add new documentation, make it self-contained and keep the prose aligned with the current code.
