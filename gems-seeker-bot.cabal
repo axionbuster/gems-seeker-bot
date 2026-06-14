@@ -45,6 +45,7 @@ library gsb-vision
                     , Image.Zncc
                     , Image.Frame
                     , Vision.Board
+                    , Vision.Screen
     build-depends:    base ^>= 4.22.0.0
                     , JuicyPixels >= 3.3.9 && < 3.4
                     , array >= 0.5.8 && < 0.6

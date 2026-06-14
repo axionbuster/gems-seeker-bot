@@ -9,11 +9,13 @@ module Mac.Gesture
   ( swipe
   , swipeTarget
   , cliclickArgs
+  , imagePointToScreen
+  , clickPoint
   , replay
   ) where
 
 import Board (Dir (..))
-import Mac.Mirror (Rect, windowCenter)
+import Mac.Mirror (Rect (..), windowCenter)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Process (callProcess)
 
@@ -56,6 +58,20 @@ cliclickArgs rect dir =
     (cx, cy) = windowCenter rect
     (tx, ty) = swipeTarget rect dir
     point (x, y) = show x ++ "," ++ show y
+
+-- | Convert a point in captured-image pixels to an absolute screen point.
+imagePointToScreen :: Rect -> (Int, Int) -> (Int, Int) -> (Int, Int)
+imagePointToScreen rect (imageWidth, imageHeight) (imageX, imageY) =
+  ( rectX rect + scale imageX (rectW rect) imageWidth
+  , rectY rect + scale imageY (rectH rect) imageHeight
+  )
+  where
+    scale value screenExtent imageExtent =
+      round (fromIntegral value * fromIntegral screenExtent / fromIntegral imageExtent :: Double)
+
+-- | Click one absolute screen point.
+clickPoint :: (Int, Int) -> IO ()
+clickPoint (x, y) = callProcess "cliclick" ["c:" ++ show x ++ "," ++ show y]
 
 -- | One gravity swipe within a region.
 swipe :: Rect -> Dir -> IO ()

@@ -22,8 +22,10 @@ import Board
 import Solve (parseCase, solve)
 
 import Image (Image, PixelRGB8 (..), convertRGB8, generateImage, pixelAt, readImage)
+import Image.Frame (resizeNearest)
 import Image.Zncc (bestZncc, zncc)
 import Vision.Board (parseBoard, prepareTemplates, validateParsedBoard)
+import Vision.Screen (findPlayButton)
 
 #ifdef DARWIN
 import Mac.Mirror
@@ -33,7 +35,7 @@ import Mac.Mirror
   , selectPhoneWindow
   , windowCenter
   )
-import Mac.Gesture (cliclickArgs, swipeTarget)
+import Mac.Gesture (cliclickArgs, imagePointToScreen, swipeTarget)
 #endif
 
 -- A non-flat RGB gradient image (non-zero variance, so ZNCC is well-defined).
@@ -239,6 +241,10 @@ main = hspec $ do
     it "builds a press/drag/release cliclick vector" $
       cliclickArgs rect R
         `shouldBe` ["-e", "500", "w:100", "m:100,100", "dd:100,100", "dm:200,100", "du:200,100"]
+
+    it "maps Retina image pixels into screen points" $
+      imagePointToScreen (Rect 17 30 348 766) (696, 1532) (348, 1362)
+        `shouldBe` (191, 711)
 #endif
 
   -- CV oracle: the reference Experiment2 classifies every one of its 61 frames
@@ -313,6 +319,60 @@ main = hspec $ do
         it "separates the yellow player from isolated interior walls" $
           fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
+  describe "Vision.Board.parseBoard (half-cell grid phase)" $ do
+    let framePath = "test/fixtures/frames/live-orange-window.png"
+        fixturePath = "test/fixtures/frames/live-orange-window.board"
+        required =
+          [ "assets/templates/gem.png"
+          , "assets/templates/bat.png"
+          , framePath
+          , fixturePath
+          ]
+    missing <- runIO (filterM (fmap not . doesFileExist) required)
+    if not (null missing)
+      then it "recovers a board whose sprites use the alternate lattice phase" $
+        pendingWith ("missing fixtures: " ++ show missing)
+      else do
+        result <- runIO $ do
+          gemT <- loadRGB8 "assets/templates/gem.png"
+          batT <- loadRGB8 "assets/templates/bat.png"
+          frame <- loadRGB8 framePath
+          pure (parseBoard (prepareTemplates gemT batT) [frame])
+        expected <- runIO (readFile fixturePath)
+        it "recovers a board whose sprites use the alternate lattice phase" $
+          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+
+  describe "Vision.Board.parseBoard (segmented perimeter theme)" $ do
+    let framePath = "test/fixtures/frames/live-purple-window.png"
+        fixturePath = "test/fixtures/frames/live-purple-window.board"
+        required =
+          [ "assets/templates/gem.png"
+          , "assets/templates/bat.png"
+          , framePath
+          , fixturePath
+          ]
+    missing <- runIO (filterM (fmap not . doesFileExist) required)
+    if not (null missing)
+      then it "combines separated wall runs into one playfield envelope" $
+        pendingWith ("missing fixtures: " ++ show missing)
+      else do
+        result <- runIO $ do
+          gemT <- loadRGB8 "assets/templates/gem.png"
+          batT <- loadRGB8 "assets/templates/bat.png"
+          frame <- loadRGB8 framePath
+          pure (parseBoard (prepareTemplates gemT batT) [frame])
+        expected <- runIO (readFile fixturePath)
+        it "combines separated wall runs into one playfield envelope" $
+          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+
+        scaledResult <- runIO $ do
+          gemT <- loadRGB8 "assets/templates/gem.png"
+          batT <- loadRGB8 "assets/templates/bat.png"
+          frame <- loadRGB8 framePath
+          pure (parseBoard (prepareTemplates gemT batT) [resizeNearest 348 766 frame])
+        it "scales sprite templates to a one-point-per-pixel capture" $
+          fmap (lines . renderBoard) scaledResult `shouldBe` Right (lines expected)
+
   describe "Vision.Board.validateParsedBoard" $ do
     it "accepts one player with at least one gem" $
       validateParsedBoard (Board 2 1 [Player, Gem])
@@ -325,6 +385,28 @@ main = hspec $ do
     it "rejects a scene without a remaining gem" $
       validateParsedBoard (Board 1 1 [Player])
         `shouldBe` Left "Vision.Board.parseBoard: expected at least one gem"
+
+  describe "Vision.Screen.findPlayButton" $ do
+    let templatePath = "assets/templates/play.png"
+        playFramePath = "test/fixtures/frames/live-play-window.png"
+        boardFramePath = "test/fixtures/frames/live-window.png"
+        required = [templatePath, playFramePath, boardFramePath]
+    missing <- runIO (filterM (fmap not . doesFileExist) required)
+    if not (null missing)
+      then it "finds PLAY without matching a game board" $
+        pendingWith ("missing fixtures: " ++ show missing)
+      else do
+        playResult <- runIO $ do
+          template <- loadRGB8 templatePath
+          playFrame <- loadRGB8 playFramePath
+          boardFrame <- loadRGB8 boardFramePath
+          pure
+            ( findPlayButton template playFrame
+            , findPlayButton template boardFrame
+            , findPlayButton template (resizeNearest 348 766 playFrame)
+            )
+        it "finds PLAY without matching a game board" $
+          playResult `shouldBe` (Just (348, 1362), Nothing, Just (173, 681))
 
   caseSpec "case0 (no bats, 6x8)"
     "references/pure-solver/case0.txt"

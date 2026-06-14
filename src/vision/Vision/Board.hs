@@ -6,9 +6,9 @@
 --   1. 'estimateGrid' — locate the two yellow HUD controls in the top half, and from
 --      their separation derive the grid pitch and origin (a fixed affine of that
 --      separation; see the calibrated constants below).
---   2. 'findPlayfield' — flood the largest connected run of \"occupied\" cells to
---      bound the board's extent. Cell coordinates may be negative; the same
---      lattice serves every board size (see CLAUDE.md's grid-origin caveat).
+--   2. 'findPlayfield' — combine the board's occupied wall and object fragments
+--      to bound its extent. Cell coordinates may be negative; the same pitch
+--      supports four possible half-cell lattice phases.
 --   3. 'measureFrame' — per cell, ZNCC the gem\/bat luma and mask templates and
 --      measure foreground\/yellow\/cyan pixel fractions.
 --   4. 'classifyFrame' — threshold those into gem\/bat\/air, flood walls in from
@@ -53,6 +53,7 @@ import Control.Monad.ST (ST, runST)
 import Data.Array.ST (STUArray, newArray, readArray, writeArray)
 import Data.Complex (Complex (..), imagPart, realPart)
 import Data.List (delete, group, sort)
+import Image.Frame (resizeNearest)
 import Image.Zncc (zncc)
 
 -- | Per-cell classification thresholds, measured and frozen from the calibration
@@ -108,26 +109,78 @@ prepareTemplates gemTemplate batTemplate =
 parseBoard :: Templates -> [Image PixelRGB8] -> Either String Board
 parseBoard _ [] = Left "Vision.Board.parseBoard: no frames"
 parseBoard templates frames = do
-  perFrame <-
+  baseFrames <-
     traverse
       ( \image -> do
           grid <- estimateGrid image
-          playfield <- findPlayfield grid image
-          pure (image, grid, playfield)
+          pure (image, grid)
       )
       frames
-  let playfields = [pf | (_, _, pf) <- perFrame]
-  playfield <-
-    maybe (Left "Vision.Board.parseBoard: no playfield detected") Right $
-      mostCommon playfields
-  let w = gridRectWidth playfield
-      h = gridRectHeight playfield
-      maps =
-        [ classifyFrame calibratedThresholds w h (measureFrame templates grid playfield image)
-        | (image, grid, _) <- perFrame
-        ]
-      cells = consensusMap maps
-  validateParsedBoard (Board w h (concat cells))
+  let attempts = map (parseWithOffset baseFrames) phaseOffsets
+  case [board | Right board <- attempts] of
+    board : _ -> Right board
+    [] ->
+      case attempts of
+        Left primaryError : _ -> Left primaryError
+        _ -> Left "Vision.Board.parseBoard: no valid grid phase"
+  where
+    phaseOffsets =
+      [ (0, 0)
+      , (-0.5, 0)
+      , (0, -0.5)
+      , (-0.5, -0.5)
+      ]
+    parseWithOffset baseFrames offset = do
+      perFrame <-
+        traverse
+          ( \(image, baseGrid) -> do
+              let grid = offsetGrid offset baseGrid
+              playfield <- findPlayfield grid image
+              pure (image, grid, playfield)
+          )
+          baseFrames
+      let playfields = [pf | (_, _, pf) <- perFrame]
+      playfield <-
+        maybe (Left "Vision.Board.parseBoard: no playfield detected") Right $
+          mostCommon playfields
+      let w = gridRectWidth playfield
+          h = gridRectHeight playfield
+          maps =
+            [ classifyFrame
+                calibratedThresholds
+                w
+                h
+                (measureFrame (templatesForPitch (gridPitch grid) templates) grid playfield image)
+            | (image, grid, _) <- perFrame
+            ]
+          cells = consensusMap maps
+      validateParsedBoard (Board w h (concat cells)) >>= validateBoardEnvelope
+
+offsetGrid :: (Double, Double) -> Grid -> Grid
+offsetGrid (offsetX, offsetY) grid@Grid {gridPitch, gridOrigin = (originX, originY)} =
+  grid
+    { gridOrigin =
+        ( originX + round (offsetX * gridPitch)
+        , originY + round (offsetY * gridPitch)
+        )
+    }
+
+templatesForPitch :: Double -> Templates -> Templates
+templatesForPitch pitch templates =
+  Templates
+    { gemLumaTemplate = scaled (gemLumaTemplate templates)
+    , gemMaskTemplate = scaled (gemMaskTemplate templates)
+    , batLumaTemplate = scaled (batLumaTemplate templates)
+    , batMaskTemplate = scaled (batMaskTemplate templates)
+    }
+  where
+    calibratedPitch = 49.6
+    scale = pitch / calibratedPitch
+    scaled image =
+      resizeNearest
+        (round (fromIntegral (imageWidth image) * scale))
+        (round (fromIntegral (imageHeight image) * scale))
+        image
 
 -- | Require the object counts needed to solve and replay a freshly captured
 -- board. A malformed parse must stop before the solver can treat it as a win.
@@ -144,6 +197,26 @@ validateParsedBoard board@Board {boardCells}
   where
     playerCount = length (filter (== Player) boardCells)
     gemCount = length (filter (== Gem) boardCells)
+
+validateBoardEnvelope :: Board -> Either String Board
+validateBoardEnvelope board@Board {boardW, boardH, boardCells}
+  | boardW < 4 || boardH < 4 =
+      Left "Vision.Board.parseBoard: playfield envelope is too small"
+  | any isMovable boundaryCells =
+      Left "Vision.Board.parseBoard: movable object reached the playfield boundary"
+  | wallCount * 5 < length boundaryCells * 2 =
+      Left "Vision.Board.parseBoard: playfield boundary has too little wall evidence"
+  | otherwise = Right board
+  where
+    cellAt x y = boardCells !! (y * boardW + x)
+    boundaryCells =
+      [ cellAt x y
+      | y <- [0 .. boardH - 1]
+      , x <- [0 .. boardW - 1]
+      , x == 0 || y == 0 || x == boardW - 1 || y == boardH - 1
+      ]
+    wallCount = length (filter (== Wall) boundaryCells)
+    isMovable cell = cell == Gem || cell == Bat || cell == Player
 
 -- 1. Grid and playfield geometry --------------------------------------------
 
@@ -240,22 +313,26 @@ estimateGrid image =
     widestPair = maximumBy separation candidatePairs
     separation (left, right) = realPart right - realPart left
 
--- | Bound the playfield as the largest 4-connected run of occupied cells. Cell
--- coordinates range over a generous window (negatives allowed) so any size fits.
+-- | Bound the playfield from occupied cell fragments. Some themes draw gaps in
+-- the perimeter, so wall runs and isolated sprites contribute to one envelope.
+-- Tall one-cell components at the right edge belong to the mirrored window.
 findPlayfield :: Grid -> Image PixelRGB8 -> Either String GridRect
 findPlayfield grid image =
-  case maximumBy length (connectedComponents occupiedCells) of
-    Nothing -> Left "findPlayfield: no occupied playfield component found"
-    Just component ->
-      let xs = map fst component
-          ys = map snd component
-       in Right
+  case boardCells of
+    [] -> Left "findPlayfield: no occupied playfield cells found"
+    _ ->
+      let xs = map fst boardCells
+          ys = map snd boardCells
+          rect =
             GridRect
               { minCellX = minimum xs
               , minCellY = minimum ys
               , maxCellX = maximum xs
               , maxCellY = maximum ys
               }
+       in if gridRectWidth rect >= 4 && gridRectHeight rect >= 4
+            then Right rect
+            else Left "findPlayfield: occupied envelope is too small"
   where
     bounds = cellBounds (gridPitch grid) (gridOrigin grid)
     candidateCells =
@@ -269,6 +346,14 @@ findPlayfield grid image =
       | point <- candidateCells
       , cellForegroundFraction image (bounds point) > 0.08
       ]
+    boardCells = concat (filter boardFragment (connectedComponents occupiedCells))
+    boardFragment component =
+      let xs = map fst component
+          ys = map snd component
+          width = maximum xs - minimum xs + 1
+          height = maximum ys - minimum ys + 1
+       in length component >= 2
+            && not (width == 1 && height >= 8)
 
 boundsInside :: Image pixel -> CellBounds -> Bool
 boundsInside image CellBounds {cellLeft, cellTop, cellWidth, cellHeight} =

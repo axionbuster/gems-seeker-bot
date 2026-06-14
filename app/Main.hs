@@ -21,11 +21,20 @@ import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
 import Board (Board, Dir (..), boardFromLines, renderBoard)
-import Image (Image, PixelRGB8, convertRGB8, decodeImage, readImage)
-import Mac.Gesture (replay, swipe)
+import Image
+  ( Image
+  , PixelRGB8
+  , convertRGB8
+  , decodeImage
+  , imageHeight
+  , imageWidth
+  , readImage
+  )
+import Mac.Gesture (clickPoint, imagePointToScreen, replay, swipe)
 import Mac.Mirror (Rect, captureFrame, findWindow, focusApp)
 import Solve (parseCase, solve)
 import Vision.Board (Templates, parseBoard, prepareTemplates)
+import Vision.Screen (findPlayButton)
 
 main :: IO ()
 main = do
@@ -96,24 +105,54 @@ runFull :: IO ()
 runFull = do
   app <- appName
   templates <- loadTemplates
-  rect <- requireWindow
+  playTemplate <- loadRGB8 "assets/templates/play.png"
   focusApp app
+  loop app templates playTemplate 0 0
+
+loop :: String -> Templates -> Image PixelRGB8 -> Int -> Int -> IO ()
+loop app templates playTemplate consecutivePlayClicks transientRetries = do
+  rect <- requireWindow
   png <- captureFrame rect
-  BS.writeFile "frame.png" png -- keep the frame around for debugging
+  BS.writeFile "frame.png" png
   case decodeImage png of
     Left err -> die ("decode failed: " ++ err)
-    Right dynamic ->
-      case parseBoard templates [convertRGB8 dynamic] of
-        Left err -> die ("parse failed: " ++ err)
-        Right board -> do
-          putStrLn "parsed board:"
-          putStrLn (renderBoard board)
-          case solve board of
-            Nothing -> die "no solution found"
-            Just moves -> do
-              putStrLn (show (length moves) ++ " moves: " ++ unwords (map show moves))
-              replay rect moves
-              putStrLn "done"
+    Right dynamic -> do
+      let frame = convertRGB8 dynamic
+      case findPlayButton playTemplate frame of
+        Just imagePoint
+          | consecutivePlayClicks < 3 -> do
+              let screenPoint =
+                    imagePointToScreen
+                      rect
+                      (imageWidth frame, imageHeight frame)
+                      imagePoint
+              putStrLn ("PLAY detected; clicking " ++ show screenPoint)
+              focusApp app
+              clickPoint screenPoint
+              threadDelay 500000
+              loop app templates playTemplate (consecutivePlayClicks + 1) 0
+          | otherwise ->
+              putStrLn "stopped: PLAY remained visible after 3 click attempts"
+        Nothing ->
+          case parseBoard templates [frame] of
+            Left err
+              | transientRetries < 10 -> do
+                  threadDelay 500000
+                  loop app templates playTemplate consecutivePlayClicks (transientRetries + 1)
+              | otherwise ->
+                  putStrLn ("stopped: no PLAY button and parse failed: " ++ err)
+            Right board -> do
+              putStrLn "parsed board:"
+              putStrLn (renderBoard board)
+              case solve board of
+                Nothing -> putStrLn "stopped: no solution found"
+                Just moves -> do
+                  putStrLn (show (length moves) ++ " moves: " ++ unwords (map show moves))
+                  focusApp app
+                  replay rect moves
+                  putStrLn "done"
+                  threadDelay 500000
+                  loop app templates playTemplate 0 0
 
 -- helpers --------------------------------------------------------------------
 
