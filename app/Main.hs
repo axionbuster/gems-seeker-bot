@@ -104,6 +104,7 @@ runFull = do
   focusApp app
   loop app templates playTemplate 0 0
 
+-- | Main loop: capture the game window, detect the PLAY button, parse the board, solve, and replay moves.
 loop :: String -> Templates -> Image PixelRGB8 -> Int -> Int -> IO ()
 loop app templates playTemplate consecutivePlayClicks transientRetries = do
   window <- requireWindow

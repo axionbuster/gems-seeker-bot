@@ -1,4 +1,4 @@
--- Only this package. The reference submodules under references/ carry their own
--- .cabal/stack setups and must NOT be part of our build (we read from them, we
--- don't depend on them — see CLAUDE.md).
+-- I used to have code references (prior implementations of parts)
+-- in submodules; now they're gone, this file is strictly speaking unnecessary,
+-- but I'm keeping it because, why not?
 packages: .
