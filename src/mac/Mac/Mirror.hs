@@ -5,17 +5,25 @@ module Mac.Mirror
   ( Rect (..)
   , Window
   , windowRect
+  , RecordingInfo (..)
   , windowCenter
   , selectPhoneWindow
   , findWindow
   , focusApp
   , captureFrame
+  , recordingFilePath
+  , newRecordingPath
+  , withRecording
   ) where
 
 import           Codec.Picture.Types
 import           Data.List
 import           Data.Ord
+import           Data.Time
 import qualified Mac.Native          as Native
+import           System.Directory
+import           System.FilePath
+import           UnliftIO.Exception
 
 -- | A screen rectangle, in points.
 data Rect = Rect
@@ -30,6 +38,15 @@ data Rect = Rect
 data Window = Window
   { windowId   :: {-# UNPACK #-} !Int
   , windowRect ::                !Rect -- ^ Absolute screen rectangle for pointer gestures.
+  }
+  deriving (Eq, Show)
+
+-- | Properties of the movie stream selected for a recording.
+data RecordingInfo = RecordingInfo
+  { recordingPath   :: FilePath
+  , recordingWidth  :: {-# UNPACK #-} !Int
+  , recordingHeight :: {-# UNPACK #-} !Int
+  , recordingFps    :: {-# UNPACK #-} !Int
   }
   deriving (Eq, Show)
 
@@ -72,3 +89,35 @@ focusApp = Native.focusApp
 -- native display pixels, so Retina captures contain two pixels per point.
 captureFrame :: Window -> IO (Image PixelRGB8)
 captureFrame = Native.captureRgb . windowId
+
+-- | Build a timestamped movie path for a live mode.
+recordingFilePath :: FilePath -> String -> ZonedTime -> FilePath
+recordingFilePath directory mode timestamp =
+  directory
+    </> formatTime defaultTimeLocale "%Y-%m-%dT%H-%M-%S%Q%z" timestamp
+    ++ "-"
+    ++ mode
+    <.> "mov"
+
+-- | Create the ignored recording directory and choose a timestamped movie path.
+newRecordingPath :: String -> IO FilePath
+newRecordingPath mode = do
+  let directory = "recordings"
+  createDirectoryIfMissing True directory
+  recordingFilePath directory mode <$> getZonedTime
+
+-- | Record a window around an action, finalizing the movie on every exit path.
+withRecording :: Window -> FilePath -> (RecordingInfo -> IO a) -> IO a
+withRecording window outputPath =
+  bracket start (const Native.stopRecording)
+  where
+    start = do
+      (width, height, fps) <-
+        Native.startRecording (windowId window) outputPath 120 2
+      pure
+        RecordingInfo
+          { recordingPath = outputPath
+          , recordingWidth = width
+          , recordingHeight = height
+          , recordingFps = fps
+          }

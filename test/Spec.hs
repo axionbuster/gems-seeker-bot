@@ -14,6 +14,7 @@ import           Vision.Board
 import           Vision.Screen
 
 #ifdef DARWIN
+import           Data.Time
 import           Mac.Gesture
 import           Mac.Mirror
 #endif
@@ -233,6 +234,19 @@ main = hspec $ do
     it "rejects a window list containing only guard dialogs" $
       selectPhoneWindow [Rect 23 39 66 20]
         `shouldBe` Nothing
+
+  describe "Mac.Mirror.recordingFilePath" $ do
+    it "includes the local timestamp, mode, and movie extension" $ do
+      let timestamp =
+            ZonedTime
+              ( LocalTime
+                  (fromGregorian 2026 6 15)
+                  (TimeOfDay 7 8 9.123)
+              )
+              (minutesToTimeZone (-420))
+      recordingFilePath "recordings" "almost" timestamp
+        `shouldBe`
+          "recordings/2026-06-15T07-08-09.123-0700-almost.mov"
 
   describe "Mac gesture geometry" $ do
     let rect = Rect 0 0 200 200 -- centre (100,100)

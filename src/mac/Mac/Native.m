@@ -2,6 +2,7 @@
 
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
+#import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 
@@ -14,8 +15,9 @@
  * Table of contents
  * 1. Shared errors and permissions
  * 2. Raw ScreenCaptureKit frames
- * 3. Native application windows
- * 4. Core Graphics pointer events
+ * 3. ScreenCaptureKit movie recording
+ * 4. Native application windows
+ * 5. Core Graphics pointer events
  */
 
 static const useconds_t dragLeadInUs = 500000;
@@ -30,6 +32,63 @@ typedef struct {
   BOOL interrupted;
   CFMachPortRef eventTap;
 } PointerMonitor;
+
+@interface GSBRecordingSession
+    : NSObject <SCRecordingOutputDelegate, SCStreamDelegate>
+
+@property(nonatomic, strong) SCStream *stream;
+@property(nonatomic, strong) SCRecordingOutput *output;
+@property(nonatomic, strong) dispatch_semaphore_t startedSemaphore;
+@property(nonatomic, strong) dispatch_semaphore_t finishedSemaphore;
+@property(nonatomic, copy) NSString *recordingError;
+@property(nonatomic) BOOL started;
+
+@end
+
+static GSBRecordingSession *activeRecording = nil;
+
+@implementation GSBRecordingSession
+
+- (void)recordingOutputDidStartRecording:
+    (SCRecordingOutput *)recordingOutput {
+  (void)recordingOutput;
+  @synchronized(self) {
+    self.started = YES;
+  }
+  dispatch_semaphore_signal(self.startedSemaphore);
+}
+
+- (void)recordingOutput:
+    (SCRecordingOutput *)recordingOutput
+    didFailWithError:(NSError *)error {
+  (void)recordingOutput;
+  @synchronized(self) {
+    if (self.recordingError == nil) {
+      self.recordingError = error.localizedDescription;
+    }
+  }
+  dispatch_semaphore_signal(self.startedSemaphore);
+  dispatch_semaphore_signal(self.finishedSemaphore);
+}
+
+- (void)recordingOutputDidFinishRecording:
+    (SCRecordingOutput *)recordingOutput {
+  (void)recordingOutput;
+  dispatch_semaphore_signal(self.finishedSemaphore);
+}
+
+- (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
+  (void)stream;
+  @synchronized(self) {
+    if (self.recordingError == nil) {
+      self.recordingError = error.localizedDescription;
+    }
+  }
+  dispatch_semaphore_signal(self.startedSemaphore);
+  dispatch_semaphore_signal(self.finishedSemaphore);
+}
+
+@end
 
 // 1. Shared errors and permissions -------------------------------------------
 
@@ -362,7 +421,280 @@ int gsb_capture_rgb(
   }
 }
 
-// 3. Native application windows ---------------------------------------------
+// 3. ScreenCaptureKit movie recording ---------------------------------------
+
+static NSInteger maximumFpsForWindow(CGRect windowFrame) {
+  NSScreen *targetScreen = nil;
+  CGFloat largestIntersection = 0;
+  for (NSScreen *screen in NSScreen.screens) {
+    NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+    if (screenNumber == nil) {
+      continue;
+    }
+    CGRect displayBounds =
+        CGDisplayBounds((CGDirectDisplayID)screenNumber.unsignedIntValue);
+    CGRect intersection = CGRectIntersection(windowFrame, displayBounds);
+    if (CGRectIsNull(intersection)) {
+      continue;
+    }
+    CGFloat area = intersection.size.width * intersection.size.height;
+    if (area > largestIntersection) {
+      targetScreen = screen;
+      largestIntersection = area;
+    }
+  }
+
+  NSInteger maximumFps =
+      targetScreen == nil ? 60 : targetScreen.maximumFramesPerSecond;
+  return maximumFps > 0 ? maximumFps : 60;
+}
+
+static size_t evenPixelDimension(CGFloat points, int32_t pixelsPerPoint) {
+  size_t pixels = (size_t)llround(points * pixelsPerPoint);
+  return pixels + (pixels % 2);
+}
+
+int gsb_start_recording(
+    uint32_t windowID,
+    const char *outputPath,
+    int32_t preferredFps,
+    int32_t pixelsPerPoint,
+    int32_t *outWidth,
+    int32_t *outHeight,
+    int32_t *outFps,
+    char **outError) {
+  @autoreleasepool {
+    if (outError != NULL) {
+      *outError = NULL;
+    }
+    if (windowID == 0 || outputPath == NULL || preferredFps <= 0
+        || pixelsPerPoint <= 0 || outWidth == NULL || outHeight == NULL
+        || outFps == NULL) {
+      setError(outError, @"Screen recording received invalid arguments.");
+      return 1;
+    }
+    if (activeRecording != nil) {
+      setError(outError, @"A screen recording is already active.");
+      return 1;
+    }
+    *outWidth = 0;
+    *outHeight = 0;
+    *outFps = 0;
+
+    if (!CGPreflightScreenCaptureAccess()
+        && !CGRequestScreenCaptureAccess()) {
+      setError(
+          outError,
+          @"Screen Recording permission is required in System Settings > "
+           "Privacy & Security > Screen & System Audio Recording.");
+      return 1;
+    }
+
+    NSString *path = [[NSString alloc] initWithUTF8String:outputPath];
+    if (path == nil) {
+      setError(outError, @"Recording path is not valid UTF-8.");
+      return 1;
+    }
+    if ([NSFileManager.defaultManager fileExistsAtPath:path]) {
+      setError(outError, @"The recording output path already exists.");
+      return 1;
+    }
+
+    if (@available(macOS 15.2, *)) {
+      dispatch_semaphore_t contentFinished = dispatch_semaphore_create(0);
+      __block GSBRecordingSession *session = nil;
+      __block NSString *setupError = nil;
+      __block size_t outputWidth = 0;
+      __block size_t outputHeight = 0;
+      __block NSInteger outputFps = 0;
+
+      [SCShareableContent
+          getShareableContentExcludingDesktopWindows:YES
+          onScreenWindowsOnly:YES
+          completionHandler:^(
+              SCShareableContent *content,
+              NSError *contentError) {
+            SCWindow *target = nil;
+            for (SCWindow *window in content.windows) {
+              if (window.windowID == windowID) {
+                target = window;
+                break;
+              }
+            }
+            if (target == nil) {
+              setupError =
+                  contentError == nil
+                      ? @"ScreenCaptureKit could not find the selected window."
+                      : [contentError.localizedDescription copy];
+              dispatch_semaphore_signal(contentFinished);
+              return;
+            }
+
+            outputWidth =
+                evenPixelDimension(target.frame.size.width, pixelsPerPoint);
+            outputHeight =
+                evenPixelDimension(target.frame.size.height, pixelsPerPoint);
+            if (outputWidth == 0 || outputHeight == 0
+                || outputWidth > INT32_MAX || outputHeight > INT32_MAX) {
+              setupError = @"Screen recording resolved invalid dimensions.";
+              dispatch_semaphore_signal(contentFinished);
+              return;
+            }
+
+            NSInteger displayFps = maximumFpsForWindow(target.frame);
+            outputFps = MIN((NSInteger)preferredFps, displayFps);
+
+            SCContentFilter *filter = [[SCContentFilter alloc]
+                initWithDesktopIndependentWindow:target];
+            SCStreamConfiguration *streamConfiguration =
+                [[SCStreamConfiguration alloc] init];
+            streamConfiguration.width = outputWidth;
+            streamConfiguration.height = outputHeight;
+            streamConfiguration.minimumFrameInterval =
+                CMTimeMake(1, (int32_t)outputFps);
+            streamConfiguration.pixelFormat = kCVPixelFormatType_32BGRA;
+            streamConfiguration.scalesToFit = YES;
+            streamConfiguration.preservesAspectRatio = YES;
+            streamConfiguration.showsCursor = NO;
+            streamConfiguration.ignoreShadowsSingleWindow = YES;
+            streamConfiguration.backgroundColor =
+                CGColorGetConstantColor(kCGColorBlack);
+            streamConfiguration.queueDepth = 8;
+
+            GSBRecordingSession *newSession =
+                [[GSBRecordingSession alloc] init];
+            newSession.startedSemaphore = dispatch_semaphore_create(0);
+            newSession.finishedSemaphore = dispatch_semaphore_create(0);
+
+            SCRecordingOutputConfiguration *recordingConfiguration =
+                [[SCRecordingOutputConfiguration alloc] init];
+            recordingConfiguration.outputURL =
+                [NSURL fileURLWithPath:path];
+            if (![recordingConfiguration.availableOutputFileTypes
+                    containsObject:AVFileTypeQuickTimeMovie]) {
+              setupError =
+                  @"ScreenCaptureKit cannot write QuickTime movies on this Mac.";
+              dispatch_semaphore_signal(contentFinished);
+              return;
+            }
+            recordingConfiguration.outputFileType =
+                AVFileTypeQuickTimeMovie;
+            recordingConfiguration.videoCodecType =
+                AVVideoCodecTypeH264;
+
+            newSession.output = [[SCRecordingOutput alloc]
+                initWithConfiguration:recordingConfiguration
+                delegate:newSession];
+            newSession.stream = [[SCStream alloc]
+                initWithFilter:filter
+                configuration:streamConfiguration
+                delegate:newSession];
+            NSError *outputError = nil;
+            if (![newSession.stream
+                    addRecordingOutput:newSession.output
+                    error:&outputError]) {
+              setupError = outputError.localizedDescription;
+              dispatch_semaphore_signal(contentFinished);
+              return;
+            }
+
+            session = newSession;
+            dispatch_semaphore_signal(contentFinished);
+          }];
+      dispatch_semaphore_wait(contentFinished, DISPATCH_TIME_FOREVER);
+
+      if (session == nil) {
+        setError(
+            outError,
+            setupError == nil ? @"Screen recording setup failed." : setupError);
+        return 1;
+      }
+
+      activeRecording = session;
+      [session.stream
+          startCaptureWithCompletionHandler:^(NSError *error) {
+            if (error != nil) {
+              @synchronized(session) {
+                if (session.recordingError == nil) {
+                  session.recordingError = error.localizedDescription;
+                }
+              }
+              dispatch_semaphore_signal(session.startedSemaphore);
+            }
+          }];
+      dispatch_semaphore_wait(
+          session.startedSemaphore,
+          DISPATCH_TIME_FOREVER);
+
+      NSString *recordingError = nil;
+      BOOL started = NO;
+      @synchronized(session) {
+        recordingError = session.recordingError;
+        started = session.started;
+      }
+      if (!started) {
+        activeRecording = nil;
+        [session.stream stopCaptureWithCompletionHandler:nil];
+        [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+        setError(
+            outError,
+            recordingError == nil
+                ? @"ScreenCaptureKit did not start recording."
+                : recordingError);
+        return 1;
+      }
+
+      *outWidth = (int32_t)outputWidth;
+      *outHeight = (int32_t)outputHeight;
+      *outFps = (int32_t)outputFps;
+      return 0;
+    }
+
+    setError(outError, @"Screen recording requires macOS 15.2 or later.");
+    return 1;
+  }
+}
+
+int gsb_stop_recording(char **outError) {
+  @autoreleasepool {
+    if (outError != NULL) {
+      *outError = NULL;
+    }
+    GSBRecordingSession *session = activeRecording;
+    if (session == nil) {
+      setError(outError, @"No screen recording is active.");
+      return 1;
+    }
+
+    [session.stream
+        stopCaptureWithCompletionHandler:^(NSError *error) {
+          if (error != nil) {
+            @synchronized(session) {
+              if (session.recordingError == nil) {
+                session.recordingError = error.localizedDescription;
+              }
+            }
+            dispatch_semaphore_signal(session.finishedSemaphore);
+          }
+        }];
+    dispatch_semaphore_wait(
+        session.finishedSemaphore,
+        DISPATCH_TIME_FOREVER);
+
+    NSString *recordingError = nil;
+    @synchronized(session) {
+      recordingError = session.recordingError;
+    }
+    activeRecording = nil;
+    if (recordingError != nil) {
+      setError(outError, recordingError);
+      return 1;
+    }
+    return 0;
+  }
+}
+
+// 4. Native application windows ---------------------------------------------
 
 int gsb_list_windows(
     const char *appName,
@@ -478,7 +810,7 @@ int gsb_focus_app(const char *appName, char **outError) {
   }
 }
 
-// 4. Core Graphics pointer events --------------------------------------------
+// 5. Core Graphics pointer events --------------------------------------------
 
 int gsb_click(int32_t x, int32_t y, char **outError) {
   @autoreleasepool {

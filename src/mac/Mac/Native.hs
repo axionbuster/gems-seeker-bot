@@ -2,6 +2,8 @@
 module Mac.Native
   ( DragResult (..)
   , captureRgb
+  , startRecording
+  , stopRecording
   , listWindows
   , focusApp
   , click
@@ -61,6 +63,41 @@ captureRgb windowId =
                       , imageData = VS.unsafeFromForeignPtr0 foreignPixels pixelCount
                       }
             else throwNativeError "native screen capture failed" errorOut
+
+-- | Start recording one native window to a movie file.
+startRecording :: Int -> FilePath -> Int -> Int -> IO (Int, Int, Int)
+startRecording windowId outputPath preferredFps pixelsPerPoint =
+  withCString outputPath $ \outputPathPointer ->
+    alloca $ \widthOut ->
+      alloca $ \heightOut ->
+        alloca $ \fpsOut ->
+          alloca $ \errorOut -> do
+            poke widthOut 0
+            poke heightOut 0
+            poke fpsOut 0
+            poke errorOut nullPtr
+            result <-
+              cStartRecording
+                (fromIntegral windowId)
+                outputPathPointer
+                (fromIntegral preferredFps)
+                (fromIntegral pixelsPerPoint)
+                widthOut
+                heightOut
+                fpsOut
+                errorOut
+            if result == 0
+              then do
+                width <- fromIntegral <$> peek widthOut
+                height <- fromIntegral <$> peek heightOut
+                fps <- fromIntegral <$> peek fpsOut
+                pure (width, height, fps)
+              else throwNativeError "native recording failed to start" errorOut
+
+-- | Stop and finalize the active native recording.
+stopRecording :: IO ()
+stopRecording =
+  withNativeError "native recording failed to stop" cStopRecording
 
 -- | List layer-zero on-screen windows owned by an application.
 listWindows :: String -> IO [(Int, Int, Int, Int, Int)]
@@ -155,6 +192,21 @@ foreign import ccall safe "gsb_capture_rgb"
     -> Ptr CInt
     -> Ptr CString
     -> IO CInt
+
+foreign import ccall safe "gsb_start_recording"
+  cStartRecording
+    :: CUInt
+    -> CString
+    -> CInt
+    -> CInt
+    -> Ptr CInt
+    -> Ptr CInt
+    -> Ptr CInt
+    -> Ptr CString
+    -> IO CInt
+
+foreign import ccall safe "gsb_stop_recording"
+  cStopRecording :: Ptr CString -> IO CInt
 
 foreign import ccall safe "gsb_list_windows"
   cListWindows

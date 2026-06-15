@@ -12,6 +12,20 @@ int gsb_capture_rgb(
     int32_t *out_height,
     char **out_error);
 
+// Start a high-frame-rate H.264 movie of one native window.
+int gsb_start_recording(
+    uint32_t window_id,
+    const char *output_path,
+    int32_t preferred_fps,
+    int32_t pixels_per_point,
+    int32_t *out_width,
+    int32_t *out_height,
+    int32_t *out_fps,
+    char **out_error);
+
+// Stop and finalize the active movie recording.
+int gsb_stop_recording(char **out_error);
+
 // List layer-zero on-screen windows as ID, x, y, width, height records.
 int gsb_list_windows(
     const char *app_name,

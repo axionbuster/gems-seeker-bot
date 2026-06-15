@@ -10,6 +10,7 @@
 --   * @almost@               — solve once and replay all but the winning move
 --   * @run@ (default)        — the full capture -> parse -> solve -> replay loop
 --
+-- Live gameplay modes record timestamped movies unless @--no-record@ is set.
 -- The mirrored app name defaults to \"iPhone Mirroring\" and can be overridden
 -- with the @GSB_APP@ environment variable.
 module Main (main) where
@@ -29,22 +30,44 @@ import           Vision.Screen
 main :: IO ()
 main = do
   args <- getArgs
-  case args of
-    ["solve", path]  -> runSolve path
-    ["parse", path]  -> runParse path
-    ["capture"]      -> runCapture "frame.png"
-    ["capture", out] -> runCapture out
-    ["swipe", dir]   -> runSwipe dir
-    ["almost"]       -> runAlmost
-    ["run"]          -> runFull
-    []               -> runFull
-    _                -> usage
+  if any (`elem` ["--help", "-h"]) args
+    then putStr usageText
+    else dispatch args
 
-usage :: IO ()
-usage = die $
+dispatch :: [String] -> IO ()
+dispatch args =
+  let suppressRecording = "--no-record" `elem` args
+      command = filter (/= "--no-record") args
+   in case command of
+        ["solve", path]
+          | not suppressRecording -> runSolve path
+        ["parse", path]
+          | not suppressRecording -> runParse path
+        ["capture"]
+          | not suppressRecording -> runCapture "frame.png"
+        ["capture", out]
+          | not suppressRecording -> runCapture out
+        ["swipe", dir] -> runSwipe (not suppressRecording) dir
+        ["almost"]     -> runAlmost (not suppressRecording)
+        ["run"]        -> runFull (not suppressRecording)
+        []             -> runFull (not suppressRecording)
+        _              -> usageError
+
+usageText :: String
+usageText =
   unlines
     [ "gems-seeker-bot — Gem Seeker solver"
     , ""
+    , "Usage:"
+    , "  gems-seeker-bot [--help]"
+    , "  gems-seeker-bot [--no-record] [run]"
+    , "  gems-seeker-bot [--no-record] almost"
+    , "  gems-seeker-bot [--no-record] swipe <up|down|left|right>"
+    , "  gems-seeker-bot solve <board.txt>"
+    , "  gems-seeker-bot parse <frame.png>"
+    , "  gems-seeker-bot capture [out.png]"
+    , ""
+    , "Commands:"
     , "  solve <board.txt>            solve a text board, print the moves"
     , "  parse <frame.png>            classify a frame, print the glyph board"
     , "  capture [out.png]            grab the game window to a PNG (default frame.png)"
@@ -52,8 +75,16 @@ usage = die $
     , "  almost                       solve once, replay all but the final move"
     , "  run                          capture, parse, solve, and replay (default)"
     , ""
+    , "Options:"
+    , "  --help, -h                   show this help"
+    , "  --no-record                  suppress recording for run, almost, or swipe"
+    , ""
+    , "Movies: recordings/<timestamp>-<mode>.mov (up to 120 FPS, 2 pixels/point)."
     , "App name override: GSB_APP (default \"iPhone Mirroring\")."
     ]
+
+usageError :: IO ()
+usageError = die usageText
 
 -- subcommands ----------------------------------------------------------------
 
@@ -86,26 +117,30 @@ runCapture out = do
       ++ " RGB pixels to "
       ++ out
 
-runSwipe :: String -> IO ()
-runSwipe dirText =
+runSwipe :: Bool -> String -> IO ()
+runSwipe shouldRecord dirText =
   case parseDir dirText of
     Nothing -> die ("unknown direction: " ++ dirText ++ " (use up|down|left|right)")
     Just dir -> do
       app <- appName
       window <- requireWindow
       focusApp app
-      completed <- swipe (windowRect window) dir
+      completed <-
+        withGameplayRecording shouldRecord "swipe" window $
+          swipe (windowRect window) dir
       if completed
         then putStrLn ("swiped " ++ show dir)
         else putStrLn "stopped: pointer input interrupted swipe"
 
-runAlmost :: IO ()
-runAlmost = do
+runAlmost :: Bool -> IO ()
+runAlmost shouldRecord = do
   app <- appName
   templates <- loadTemplates
   playTemplate <- loadRGB8 "assets/templates/play.png"
   focusApp app
-  almost app templates playTemplate 0 0
+  window <- requireWindow
+  withGameplayRecording shouldRecord "almost" window $
+    almost app templates playTemplate 0 0
 
 -- | Delay between one-shot screen-state checks, in microseconds.
 almostPollDelay :: Int
@@ -162,13 +197,15 @@ almost app templates playTemplate consecutivePlayClicks transientRetries = do
                     then putStrLn "done: final move left unreplayed"
                     else putStrLn "stopped: pointer input interrupted replay"
 
-runFull :: IO ()
-runFull = do
+runFull :: Bool -> IO ()
+runFull shouldRecord = do
   app <- appName
   templates <- loadTemplates
   playTemplate <- loadRGB8 "assets/templates/play.png"
   focusApp app
-  loop app templates playTemplate 0 0
+  window <- requireWindow
+  withGameplayRecording shouldRecord "run" window $
+    loop app templates playTemplate 0 0
 
 -- | Main loop: capture the game window, detect the PLAY button, parse the board, solve, and replay moves.
 loop :: String -> Templates -> Image PixelRGB8 -> Int -> Int -> IO ()
@@ -224,6 +261,25 @@ reportSolution board =
     Nothing -> die "no solution found"
     Just moves ->
       putStrLn (show (length moves) ++ " moves: " ++ unwords (map show moves))
+
+withGameplayRecording :: Bool -> String -> Window -> IO a -> IO a
+withGameplayRecording False _ _ action = action
+withGameplayRecording True mode window action = do
+  outputPath <- newRecordingPath mode
+  result <-
+    withRecording window outputPath $ \info -> do
+      putStrLn $
+        "recording "
+          ++ show (recordingWidth info)
+          ++ "x"
+          ++ show (recordingHeight info)
+          ++ " at up to "
+          ++ show (recordingFps info)
+          ++ " FPS to "
+          ++ recordingPath info
+      action
+  putStrLn ("saved recording to " ++ outputPath)
+  pure result
 
 -- | Read a board file: the case-file format (@count@, @"W H"@, grid) when it
 -- looks like one, otherwise a bare glyph grid.

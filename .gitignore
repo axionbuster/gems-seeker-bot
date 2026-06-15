@@ -12,3 +12,4 @@ cabal.project.local
 
 # Generated during runtime
 /frame.png
+/recordings/

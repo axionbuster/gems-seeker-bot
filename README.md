@@ -15,6 +15,7 @@ It captures the game window, reads the board from a few frames, solves the level
 - Solves the full board before it starts replaying moves.
 - Replays gravity moves with native Core Graphics events.
 - Yields and stops replay when it detects competing pointer input.
+- Records `run`, `almost`, and `swipe` gameplay to timestamped H.264 movies.
 
 ## Requirements
 
@@ -47,14 +48,34 @@ cabal run gems-seeker-bot -- solve test/fixtures/cases/case0.txt
 cabal run gems-seeker-bot -- parse test/fixtures/frames/live-window.png
 cabal run gems-seeker-bot -- capture
 cabal run gems-seeker-bot -- swipe left
+cabal run gems-seeker-bot -- almost
+cabal run gems-seeker-bot -- --no-record run
+cabal run gems-seeker-bot -- --help
 ```
+
+## Gameplay Recording
+
+The live `run`, `almost`, and `swipe` modes record by default. Movies are saved
+under the Git-ignored `recordings/` directory with local timestamps and mode
+names in their filenames. Pass `--no-record` to suppress recording.
+
+Recording requests 120 FPS and clamps that request to the maximum refresh rate
+of the display containing the game window. ScreenCaptureKit writes the frames
+the display can supply, so the movie does not add duplicate frames to claim a
+higher rate.
+
+Movies use H.264 in a QuickTime `.mov` container. Their dimensions are fixed at
+2 pixels per macOS point for the window size at recording start. A given window
+size therefore produces the same editing canvas on Retina and non-Retina
+displays; non-Retina input is upscaled to preserve that stable canvas.
 
 ## How It Works
 
 1. The app locates, activates, and captures the iPhone Mirroring window.
 2. Vision code classifies the board from a handful of frames.
 3. Search code computes the full solution.
-4. The macOS gesture layer replays the moves.
+4. ScreenCaptureKit records live modes while the macOS gesture layer replays
+   the moves.
 
 ## Repository Layout
 

@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.3.0.0 - 2026-06-15
+
+- Added an `almost` mode that replays every move before the final winning move.
+- Recorded `run`, `almost`, and `swipe` gameplay to timestamped H.264 QuickTime
+  movies by default, with `--no-record` available to suppress recording.
+- Requested up to 120 FPS based on the game window's display refresh rate and
+  standardized movie dimensions at 2 pixels per macOS point.
+- Added explicit `--help` and `-h` command-line options.
+- Simplified vision support code and tightened project formatting settings.
 
 ## 0.2.0.0 - 2026-06-14
 
