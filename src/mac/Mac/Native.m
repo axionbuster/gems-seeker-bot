@@ -560,6 +560,12 @@ int gsb_start_recording(
             streamConfiguration.backgroundColor =
                 CGColorGetConstantColor(kCGColorBlack);
             streamConfiguration.queueDepth = 8;
+            // A single-window filter captures audio from the window's entire
+            // owning application, including iPhone Mirroring gameplay audio.
+            streamConfiguration.capturesAudio = YES;
+            streamConfiguration.sampleRate = 48000;
+            streamConfiguration.channelCount = 2;
+            streamConfiguration.excludesCurrentProcessAudio = YES;
 
             GSBRecordingSession *newSession =
                 [[GSBRecordingSession alloc] init];

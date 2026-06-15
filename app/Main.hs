@@ -79,7 +79,7 @@ usageText =
     , "  --help, -h                   show this help"
     , "  --no-record                  suppress recording for run, almost, or swipe"
     , ""
-    , "Movies: recordings/<timestamp>-<mode>.mov (up to 120 FPS, 2 pixels/point)."
+    , "Movies: recordings/<timestamp>-<mode>.mov (app audio, up to 120 FPS, 2 pixels/point)."
     , "App name override: GSB_APP (default \"iPhone Mirroring\")."
     ]
 

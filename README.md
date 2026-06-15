@@ -15,7 +15,8 @@ It captures the game window, reads the board from a few frames, solves the level
 - Solves the full board before it starts replaying moves.
 - Replays gravity moves with native Core Graphics events.
 - Yields and stops replay when it detects competing pointer input.
-- Records `run`, `almost`, and `swipe` gameplay to timestamped H.264 movies.
+- Records `run`, `almost`, and `swipe` gameplay with application audio to
+  timestamped H.264 movies.
 
 ## Requirements
 
@@ -64,8 +65,10 @@ of the display containing the game window. ScreenCaptureKit writes the frames
 the display can supply, so the movie does not add duplicate frames to claim a
 higher rate.
 
-Movies use H.264 in a QuickTime `.mov` container. Their dimensions are fixed at
-2 pixels per macOS point for the window size at recording start. A given window
+Movies use H.264 video and 48 kHz stereo application audio in a QuickTime
+`.mov` container. The single-window ScreenCaptureKit filter includes audio from
+the application that owns the captured window. Movie dimensions are fixed at 2
+pixels per macOS point for the window size at recording start. A given window
 size therefore produces the same editing canvas on Retina and non-Retina
 displays; non-Retina input is upscaled to preserve that stable canvas.
 

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.1.0 - 2026-06-15
+
+- Included 48 kHz stereo audio from the captured gameplay application in
+  recorded movies.
+
 ## 0.3.0.0 - 2026-06-15
 
 - Added an `almost` mode that replays every move before the final winning move.

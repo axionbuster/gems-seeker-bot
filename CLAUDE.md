@@ -55,8 +55,9 @@ Working notes for Codex in this repository.
 - The repository's pre-commit hook is opt-in through `scripts/install-hooks.sh`.
   If `stylish-haskell` is unavailable, the hook warns and skips formatting
   rather than blocking the commit.
-- `run`, `almost`, and `swipe` record timestamped H.264 movies under the
-  Git-ignored `recordings/` directory unless `--no-record` is set.
+- `run`, `almost`, and `swipe` record timestamped H.264 movies with 48 kHz
+  stereo application audio under the Git-ignored `recordings/` directory
+  unless `--no-record` is set.
 - Recordings request up to 120 FPS and use a stable 2-pixels-per-point canvas
   across Retina and non-Retina displays.
 - If you add new documentation, make it self-contained and keep the prose aligned with the current code.

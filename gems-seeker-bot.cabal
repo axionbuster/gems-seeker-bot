@@ -1,6 +1,6 @@
 cabal-version:      3.4
 name:               gems-seeker-bot
-version:            0.3.0.0
+version:            0.3.1.0
 synopsis:           Automated macOS solver for the Gem Seeker minigame.
 license:            BSD-3-Clause
 license-file:       LICENSE
