@@ -23,9 +23,7 @@
 -- Geometry and classification are pure; the only IO (loading templates and PNG
 -- frames) lives in the caller.
 module Vision.Board
-  ( Thresholds (..)
-  , calibratedThresholds
-  , Templates (..)
+  ( Templates (..)
   , prepareTemplates
   , parseBoard
   , validateParsedBoard
@@ -48,8 +46,9 @@ import           Data.Ord
 import           Image.Frame
 import           Image.Zncc
 
--- | Per-cell classification thresholds, measured and frozen from the calibration
--- run. Constants now.
+-- Per-cell classification thresholds measured from features generated with
+-- 'foregroundPixelThreshold'. The record keeps one calibration profile intact
+-- and leaves room for another profile without mixing their fitted values.
 data Thresholds = Thresholds
   { gemLumaThreshold           :: {-# UNPACK #-} !Double
   , gemMaskThreshold           :: {-# UNPACK #-} !Double
@@ -62,7 +61,7 @@ data Thresholds = Thresholds
   }
   deriving (Eq, Show)
 
--- | The frozen calibration from the recorded calibration run.
+-- The frozen output from the recorded calibration run.
 calibratedThresholds :: Thresholds
 calibratedThresholds =
   Thresholds
@@ -75,6 +74,12 @@ calibratedThresholds =
     , airForegroundFraction      = 7.719884503474203e-2
     , occupiedForegroundFraction = 0.19444444444444445
     }
+
+-- A pixel is foreground when any RGB channel exceeds this value. The value was
+-- held fixed while the mask-correlation and foreground-fraction thresholds
+-- were calibrated, so changing it requires recalibrating those thresholds.
+foregroundPixelThreshold :: Pixel8
+foregroundPixelThreshold = 20
 
 -- | Gem and bat templates, pre-derived into the luma and foreground-mask forms
 -- the matcher compares against (the raw RGB is unused by classification).
@@ -90,9 +95,9 @@ prepareTemplates :: Image PixelRGB8 -> Image PixelRGB8 -> Templates
 prepareTemplates gemTemplate batTemplate =
   Templates
     { gemLumaTemplate = luminanceImage gemTemplate
-    , gemMaskTemplate = foregroundMask 20 gemTemplate
+    , gemMaskTemplate = foregroundMask foregroundPixelThreshold gemTemplate
     , batLumaTemplate = luminanceImage batTemplate
-    , batMaskTemplate = foregroundMask 20 batTemplate
+    , batMaskTemplate = foregroundMask foregroundPixelThreshold batTemplate
     }
 
 -- | Parse a board from one or more RGB frames of the same scene. Uses each
@@ -114,7 +119,7 @@ parseBoard templates frames = do
     [] ->
       case attempts of
         Left primaryError : _ -> Left primaryError
-        _ -> Left "Vision.Board.parseBoard: no valid grid phase"
+        _                     -> Left "Vision.Board.parseBoard: no valid grid phase"
   where
     phaseOffsets =
       [ (0, 0)
@@ -401,7 +406,7 @@ measureFrame templates grid playfield image =
   where
     bounds    = cellBounds (gridPitch grid) (gridOrigin grid)
     lumaImage = luminanceImage image
-    maskImage = foregroundMask 20 image
+    maskImage = foregroundMask foregroundPixelThreshold image
 
 measureCell
   :: Templates
@@ -445,7 +450,10 @@ cellZnccScore template source bounds radius =
 
 cellForegroundFraction :: Image PixelRGB8 -> CellBounds -> Double
 cellForegroundFraction image bounds =
-  fractionOfCell image bounds (\(PixelRGB8 r g b) -> maximum [r, g, b] > 20)
+  fractionOfCell image bounds isForeground
+  where
+    isForeground (PixelRGB8 red green blue) =
+      maximum [red, green, blue] > foregroundPixelThreshold
 
 cellColorFraction :: (PixelRGB8 -> Bool) -> Image PixelRGB8 -> CellBounds -> Double
 cellColorFraction predicate image bounds = fractionOfCell image bounds predicate

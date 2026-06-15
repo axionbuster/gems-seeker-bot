@@ -1,7 +1,7 @@
 -- | Re-export surface for image work: JuicyPixels plus our own operations.
 --
 -- This is the "virtual dependency" pattern (see CLAUDE.md): import @Image@ and
--- get the pixel types alongside 'zncc' and the frame conversions, the way an
+-- get the pixel types alongside 'zncc' and frame resizing, the way an
 -- equivalent Python project would expose one image package.
 module Image
   ( module Codec.Picture

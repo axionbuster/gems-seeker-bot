@@ -1,4 +1,1 @@
--- I used to have code references (prior implementations of parts)
--- in submodules; now they're gone, this file is strictly speaking unnecessary,
--- but I'm keeping it because, why not?
 packages: .

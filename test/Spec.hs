@@ -35,6 +35,19 @@ loadRGB8 :: FilePath -> IO (Image PixelRGB8)
 loadRGB8 path =
   either (error . ((path ++ ": ") ++)) convertRGB8 <$> readImage path
 
+loadTestTemplates :: IO Templates
+loadTestTemplates =
+  prepareTemplates
+    <$> loadRGB8 "assets/templates/gem.png"
+    <*> loadRGB8 "assets/templates/bat.png"
+
+withFixtures :: String -> [FilePath] -> Spec -> Spec
+withFixtures exampleName required spec = do
+  missing <- runIO (filterM (fmap not . doesFileExist) required)
+  if null missing
+    then spec
+    else it exampleName $ pendingWith ("missing fixtures: " ++ show missing)
+
 pixelAtG :: Image PixelRGB8 -> Int -> Int -> PixelRGB8
 pixelAtG = pixelAt
 
@@ -142,7 +155,7 @@ caseSpec name caseFile outFile = describe name $ do
       Nothing -> expectationFailure "solver found no non-empty solution"
       Just prefix ->
         case applyMoves board0 prefix of
-          Left _ -> expectationFailure "almost sequence reached a terminal state"
+          Left _      -> expectationFailure "almost sequence reached a terminal state"
           Right board -> gemCount board `shouldSatisfy` (> 0)
 
 main :: IO ()
@@ -258,19 +271,14 @@ main = hspec $ do
           ]
         fixturePath = "test/fixtures/frames/scene1.board"
         required = gemPath : batPath : fixturePath : framePaths
-    missing <- runIO (filterM (fmap not . doesFileExist) required)
-    if not (null missing)
-      then it "reproduces the consensus board" $
-        pendingWith ("missing fixtures: " ++ show missing)
-      else do
-        result <- runIO $ do
-          gemT <- loadRGB8 gemPath
-          batT <- loadRGB8 batPath
-          frames <- mapM loadRGB8 framePaths
-          pure (parseBoard (prepareTemplates gemT batT) frames)
-        expected <- runIO (readFile fixturePath)
-        it "reproduces the consensus board" $
-          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+    withFixtures "reproduces the consensus board" required $ do
+      result <- runIO $ do
+        templates <- loadTestTemplates
+        frames <- mapM loadRGB8 framePaths
+        pure (parseBoard templates frames)
+      expected <- runIO (readFile fixturePath)
+      it "reproduces the consensus board" $
+        fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
   describe "Vision.Board.parseBoard (live iPhone Mirroring capture)" $ do
     let framePath = "test/fixtures/frames/live-window.png"
@@ -281,19 +289,14 @@ main = hspec $ do
           , framePath
           , fixturePath
           ]
-    missing <- runIO (filterM (fmap not . doesFileExist) required)
-    if not (null missing)
-      then it "parses the current theme through surrounding window chrome" $
-        pendingWith ("missing fixtures: " ++ show missing)
-      else do
-        result <- runIO $ do
-          gemT <- loadRGB8 "assets/templates/gem.png"
-          batT <- loadRGB8 "assets/templates/bat.png"
-          frame <- loadRGB8 framePath
-          pure (parseBoard (prepareTemplates gemT batT) [frame])
-        expected <- runIO (readFile fixturePath)
-        it "parses the current theme through surrounding window chrome" $
-          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+    withFixtures "parses the current theme through surrounding window chrome" required $ do
+      result <- runIO $ do
+        templates <- loadTestTemplates
+        frame <- loadRGB8 framePath
+        pure (parseBoard templates [frame])
+      expected <- runIO (readFile fixturePath)
+      it "parses the current theme through surrounding window chrome" $
+        fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
   describe "Vision.Board.parseBoard (live brown theme)" $ do
     let framePath = "test/fixtures/frames/live-brown-window.png"
@@ -304,19 +307,14 @@ main = hspec $ do
           , framePath
           , fixturePath
           ]
-    missing <- runIO (filterM (fmap not . doesFileExist) required)
-    if not (null missing)
-      then it "separates the yellow player from isolated interior walls" $
-        pendingWith ("missing fixtures: " ++ show missing)
-      else do
-        result <- runIO $ do
-          gemT <- loadRGB8 "assets/templates/gem.png"
-          batT <- loadRGB8 "assets/templates/bat.png"
-          frame <- loadRGB8 framePath
-          pure (parseBoard (prepareTemplates gemT batT) [frame])
-        expected <- runIO (readFile fixturePath)
-        it "separates the yellow player from isolated interior walls" $
-          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+    withFixtures "separates the yellow player from isolated interior walls" required $ do
+      result <- runIO $ do
+        templates <- loadTestTemplates
+        frame <- loadRGB8 framePath
+        pure (parseBoard templates [frame])
+      expected <- runIO (readFile fixturePath)
+      it "separates the yellow player from isolated interior walls" $
+        fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
   describe "Vision.Board.parseBoard (half-cell grid phase)" $ do
     let framePath = "test/fixtures/frames/live-orange-window.png"
@@ -327,19 +325,14 @@ main = hspec $ do
           , framePath
           , fixturePath
           ]
-    missing <- runIO (filterM (fmap not . doesFileExist) required)
-    if not (null missing)
-      then it "recovers a board whose sprites use the alternate lattice phase" $
-        pendingWith ("missing fixtures: " ++ show missing)
-      else do
-        result <- runIO $ do
-          gemT <- loadRGB8 "assets/templates/gem.png"
-          batT <- loadRGB8 "assets/templates/bat.png"
-          frame <- loadRGB8 framePath
-          pure (parseBoard (prepareTemplates gemT batT) [frame])
-        expected <- runIO (readFile fixturePath)
-        it "recovers a board whose sprites use the alternate lattice phase" $
-          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+    withFixtures "recovers a board whose sprites use the alternate lattice phase" required $ do
+      result <- runIO $ do
+        templates <- loadTestTemplates
+        frame <- loadRGB8 framePath
+        pure (parseBoard templates [frame])
+      expected <- runIO (readFile fixturePath)
+      it "recovers a board whose sprites use the alternate lattice phase" $
+        fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
   describe "Vision.Board.parseBoard (segmented perimeter theme)" $ do
     let framePath = "test/fixtures/frames/live-purple-window.png"
@@ -350,27 +343,21 @@ main = hspec $ do
           , framePath
           , fixturePath
           ]
-    missing <- runIO (filterM (fmap not . doesFileExist) required)
-    if not (null missing)
-      then it "combines separated wall runs into one playfield envelope" $
-        pendingWith ("missing fixtures: " ++ show missing)
-      else do
-        result <- runIO $ do
-          gemT <- loadRGB8 "assets/templates/gem.png"
-          batT <- loadRGB8 "assets/templates/bat.png"
-          frame <- loadRGB8 framePath
-          pure (parseBoard (prepareTemplates gemT batT) [frame])
-        expected <- runIO (readFile fixturePath)
-        it "combines separated wall runs into one playfield envelope" $
-          fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
+    withFixtures "combines separated wall runs into one playfield envelope" required $ do
+      result <- runIO $ do
+        templates <- loadTestTemplates
+        frame <- loadRGB8 framePath
+        pure (parseBoard templates [frame])
+      expected <- runIO (readFile fixturePath)
+      it "combines separated wall runs into one playfield envelope" $
+        fmap (lines . renderBoard) result `shouldBe` Right (lines expected)
 
-        scaledResult <- runIO $ do
-          gemT <- loadRGB8 "assets/templates/gem.png"
-          batT <- loadRGB8 "assets/templates/bat.png"
-          frame <- loadRGB8 framePath
-          pure (parseBoard (prepareTemplates gemT batT) [resizeNearest 348 766 frame])
-        it "scales sprite templates to a one-point-per-pixel capture" $
-          fmap (lines . renderBoard) scaledResult `shouldBe` Right (lines expected)
+      scaledResult <- runIO $ do
+        templates <- loadTestTemplates
+        frame <- loadRGB8 framePath
+        pure (parseBoard templates [resizeNearest 348 766 frame])
+      it "scales sprite templates to a one-point-per-pixel capture" $
+        fmap (lines . renderBoard) scaledResult `shouldBe` Right (lines expected)
 
   describe "Vision.Board.validateParsedBoard" $ do
     it "accepts one player with at least one gem" $
@@ -390,22 +377,18 @@ main = hspec $ do
         playFramePath = "test/fixtures/frames/live-play-window.png"
         boardFramePath = "test/fixtures/frames/live-window.png"
         required = [templatePath, playFramePath, boardFramePath]
-    missing <- runIO (filterM (fmap not . doesFileExist) required)
-    if not (null missing)
-      then it "finds PLAY without matching a game board" $
-        pendingWith ("missing fixtures: " ++ show missing)
-      else do
-        playResult <- runIO $ do
-          template <- loadRGB8 templatePath
-          playFrame <- loadRGB8 playFramePath
-          boardFrame <- loadRGB8 boardFramePath
-          pure
-            ( findPlayButton template playFrame
-            , findPlayButton template boardFrame
-            , findPlayButton template (resizeNearest 348 766 playFrame)
-            )
-        it "finds PLAY without matching a game board" $
-          playResult `shouldBe` (Just (348, 1362), Nothing, Just (173, 681))
+    withFixtures "finds PLAY without matching a game board" required $ do
+      playResult <- runIO $ do
+        template <- loadRGB8 templatePath
+        playFrame <- loadRGB8 playFramePath
+        boardFrame <- loadRGB8 boardFramePath
+        pure
+          ( findPlayButton template playFrame
+          , findPlayButton template boardFrame
+          , findPlayButton template (resizeNearest 348 766 playFrame)
+          )
+      it "finds PLAY without matching a game board" $
+        playResult `shouldBe` (Just (348, 1362), Nothing, Just (173, 681))
 
   caseSpec "case0 (no bats, 6x8)"
     "test/fixtures/cases/case0.txt"

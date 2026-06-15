@@ -1,9 +1,14 @@
 ._*
 dist-newstyle/
+cabal.project.local
+.stack-work/
 *.o
 *.hi
 *.hie
+*.dyn_o
+*.dyn_hi
+.vscode/
+.idea/
 
 # Generated during runtime
 /frame.png
-

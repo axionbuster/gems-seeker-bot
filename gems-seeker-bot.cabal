@@ -58,7 +58,6 @@ library gsb-vision
     build-depends:    base ^>= 4.22.0.0
                     , JuicyPixels >= 3.3.9 && < 3.4
                     , array >= 0.5.8 && < 0.6
-                    , bytestring >= 0.12.2 && < 0.13
                     , vector >= 0.13.2 && < 0.14
                     , gems-seeker-bot:gsb-search
 
