@@ -7,6 +7,7 @@
 --   * @parse \<frame.png\>@  — CV only: classify a frame, print the glyph board
 --   * @capture [out.png]@    — mac only: grab the game window to a PNG
 --   * @swipe \<dir\>@        — mac only: issue one gravity swipe
+--   * @almost@               — solve once and replay all but the winning move
 --   * @run@ (default)        — the full capture -> parse -> solve -> replay loop
 --
 -- The mirrored app name defaults to \"iPhone Mirroring\" and can be overridden
@@ -34,6 +35,7 @@ main = do
     ["capture"]      -> runCapture "frame.png"
     ["capture", out] -> runCapture out
     ["swipe", dir]   -> runSwipe dir
+    ["almost"]       -> runAlmost
     ["run"]          -> runFull
     []               -> runFull
     _                -> usage
@@ -47,6 +49,7 @@ usage = die $
     , "  parse <frame.png>            classify a frame, print the glyph board"
     , "  capture [out.png]            grab the game window to a PNG (default frame.png)"
     , "  swipe <up|down|left|right>   issue one gravity swipe"
+    , "  almost                       solve once, replay all but the final move"
     , "  run                          capture, parse, solve, and replay (default)"
     , ""
     , "App name override: GSB_APP (default \"iPhone Mirroring\")."
@@ -95,6 +98,69 @@ runSwipe dirText =
       if completed
         then putStrLn ("swiped " ++ show dir)
         else putStrLn "stopped: pointer input interrupted swipe"
+
+runAlmost :: IO ()
+runAlmost = do
+  app <- appName
+  templates <- loadTemplates
+  playTemplate <- loadRGB8 "assets/templates/play.png"
+  focusApp app
+  almost app templates playTemplate 0 0
+
+-- | Delay between one-shot screen-state checks, in microseconds.
+almostPollDelay :: Int
+almostPollDelay = 300000
+
+almost :: String -> Templates -> Image PixelRGB8 -> Int -> Int -> IO ()
+almost app templates playTemplate consecutivePlayClicks transientRetries = do
+  window <- requireWindow
+  let rect = windowRect window
+  frame <- captureFrame window
+  case findPlayButton playTemplate frame of
+    Just imagePoint
+      | consecutivePlayClicks < 3 -> do
+          let screenPoint =
+                imagePointToScreen
+                  rect
+                  (imageWidth frame, imageHeight frame)
+                  imagePoint
+          putStrLn ("PLAY detected; clicking " ++ show screenPoint)
+          focusApp app
+          clickPoint screenPoint
+          threadDelay almostPollDelay
+          almost app templates playTemplate (consecutivePlayClicks + 1) 0
+      | otherwise ->
+          putStrLn "stopped: PLAY remained visible after 3 click attempts"
+    Nothing ->
+      case parseBoard templates [frame] of
+        Left err
+          | transientRetries < 10 -> do
+              threadDelay almostPollDelay
+              almost app templates playTemplate consecutivePlayClicks (transientRetries + 1)
+          | otherwise ->
+              putStrLn ("stopped: no PLAY button and parse failed: " ++ err)
+        Right board -> do
+          putStrLn "parsed board:"
+          putStrLn (renderBoard board)
+          case solve board of
+            Nothing -> putStrLn "stopped: no solution found"
+            Just moves ->
+              case almostMoves moves of
+                Nothing ->
+                  putStrLn "stopped: solution has no move to withhold"
+                Just movesToReplay -> do
+                  putStrLn $
+                    "almost: replaying "
+                      ++ show (length movesToReplay)
+                      ++ " of "
+                      ++ show (length moves)
+                      ++ " moves: "
+                      ++ unwords (map show movesToReplay)
+                  focusApp app
+                  completed <- replay rect movesToReplay
+                  if completed
+                    then putStrLn "done: final move left unreplayed"
+                    else putStrLn "stopped: pointer input interrupted replay"
 
 runFull :: IO ()
 runFull = do

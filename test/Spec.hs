@@ -61,6 +61,14 @@ stepThrough b (d : ds) =
         Right b' -> stepThrough b' ds
         _        -> []
 
+-- | Apply a move sequence and return its final ongoing or terminal state.
+applyMoves :: Board -> [Dir] -> Either (Exc Board) Board
+applyMoves board [] = Right board
+applyMoves board (d : ds) =
+  case applyGravity d board of
+    Right board' -> applyMoves board' ds
+    terminal     -> terminal
+
 boardLines :: Board -> [String]
 boardLines = lines . renderBoard
 
@@ -129,8 +137,24 @@ caseSpec name caseFile outFile = describe name $ do
       Nothing   -> expectationFailure "solver found no solution"
       Just mine -> isWon (last (stepThrough board0 mine)) `shouldBe` True
 
+  it "solver's almost sequence remains ongoing with gems left" $
+    case solve board0 >>= almostMoves of
+      Nothing -> expectationFailure "solver found no non-empty solution"
+      Just prefix ->
+        case applyMoves board0 prefix of
+          Left _ -> expectationFailure "almost sequence reached a terminal state"
+          Right board -> gemCount board `shouldSatisfy` (> 0)
+
 main :: IO ()
 main = hspec $ do
+  describe "Solve.almostMoves" $ do
+    it "rejects an empty solution" $
+      almostMoves [] `shouldBe` Nothing
+    it "withholds the only move in a one-move solution" $
+      almostMoves [U] `shouldBe` Just []
+    it "withholds only the final move" $
+      almostMoves [U, D, R] `shouldBe` Just [U, D]
+
   describe "Board.isSolved" $ do
     it "holds when no gems remain" $
       isSolved (Board 1 1 [Air]) `shouldBe` True

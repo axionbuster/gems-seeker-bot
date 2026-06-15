@@ -22,7 +22,7 @@ swipeDelta = 100
 
 -- | Time after a swipe for the gravity animation to settle, in microseconds.
 moveSettleDelay :: Int
-moveSettleDelay = 1000000
+moveSettleDelay = 750000
 
 -- | Number of intermediate drag events in one swipe.
 swipeSteps :: Int

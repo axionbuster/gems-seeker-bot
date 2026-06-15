@@ -6,6 +6,7 @@
 -- terminal we search for and losing moves become dead ends.
 module Solve
   ( solve
+  , almostMoves
   , parseCase
   ) where
 
@@ -23,6 +24,13 @@ solve board0 = snd <$> dijkstra start isGoal successors
     successors (Left _)  = []
     isGoal (Left (Won _)) = True
     isGoal _              = False
+
+-- | Remove the winning move from a non-empty solution. An empty solution has no
+-- move to withhold.
+almostMoves :: [Dir] -> Maybe [Dir]
+almostMoves []             = Nothing
+almostMoves [_]            = Just []
+almostMoves (move : moves) = (move :) <$> almostMoves moves
 
 -- | Parse the case-file format: a leading case count, a @"W H"@ line, then
 -- @H@ grid rows. Only the first case is read.
