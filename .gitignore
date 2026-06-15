@@ -1,4 +1,6 @@
 ._*
+.DS_Store
+thumbs.db
 dist-newstyle/
 cabal.project.local
 .stack-work/
